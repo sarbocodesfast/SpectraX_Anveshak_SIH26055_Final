@@ -140,3 +140,19 @@ jobs:
         # Catches the entry point breaking without any test importing it.
         run: |
           python -m smartscan.cli info --config configs/medium.yaml
+
+      - name: Checkpoint provenance
+        # The tracked predictor weights are compared against each other in
+        # reports, so what they contain is CI's business. This prints the
+        # architecture, recipe and content hash of every one, and fails only
+        # on duplicate content -- two files that are the same bytes under
+        # different names, which is what once produced a +0.0% "null result"
+        # from a model compared against itself.
+        #
+        # It does NOT yet fail on the config/checkpoint architecture mismatch:
+        # configs/base.yaml declares gru while the shipped easy and medium
+        # weights are transformers. That is a real defect, but which
+        # architecture ships is a decision the 2x2 control has to inform, and
+        # failing CI before it is made would only block the fix.
+        run: |
+          python scripts/checkpoint_inventory.py --strict --out /tmp/ckpt.md

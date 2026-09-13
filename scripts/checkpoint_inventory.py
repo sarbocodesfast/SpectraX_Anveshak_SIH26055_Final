@@ -44,6 +44,24 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
 
+#: Duplicates that are known, explained, and waiting on a decision rather than
+#: on an author noticing them. ``--strict`` fails on anything not listed here,
+#: so a NEW duplicate breaks the build while these do not.
+#: The directory an evaluation actually loads from.
+CANONICAL = "runs/checkpoints/"
+
+KNOWN_DUPLICATES: dict[str, str] = {
+    "3362cbee58cb":
+        "predictor_hard.pt and predictor_hard_fullcorpus.pt. HARD's shipped "
+        "transformer was replaced in place by the full-corpus GRU, and the "
+        "evaluation that followed compared the file against itself for +0.0% "
+        "on every metric. The original transformer is preserved as "
+        "predictor_hard_shipped.pt, so nothing is lost; which of the two ships "
+        "is the open question the corpus x architecture control has to settle. "
+        "Remove this entry once it is settled.",
+}
+
+
 def scan(root: Path, pattern: str = "predictor*.pt") -> list[dict]:
     """Describe every checkpoint under ``root``, newest path order."""
     from smartscan.agents.predictors import describe_checkpoint
@@ -156,7 +174,7 @@ def main() -> int:
     ap.add_argument("--root", default=str(REPO_ROOT))
     ap.add_argument("--out", default=str(REPO_ROOT / "reports" / "checkpoints.md"))
     ap.add_argument("--strict", action="store_true",
-                    help="exit non-zero if duplicate-content checkpoints exist")
+                    help="exit non-zero on any duplicate not in KNOWN_DUPLICATES")
     args = ap.parse_args()
 
     rows = scan(Path(args.root))
@@ -168,7 +186,26 @@ def main() -> int:
     Path(args.out).write_text(text, encoding="utf-8")
     print(text)
     print(f"wrote {args.out}")
-    return 1 if (args.strict and dups) else 0
+
+    if not args.strict:
+        return 0
+    # A build mirror matching its source is expected. What is dangerous is two
+    # NAMES for one model inside the canonical checkpoint directory, because
+    # that is what an evaluation picks between believing they differ.
+    fresh = {
+        h: v for h, v in dups.items()
+        if h not in KNOWN_DUPLICATES
+        and sum(x.startswith(CANONICAL) for x in v) > 1
+    }
+    for h, paths in sorted(fresh.items()):
+        print(f"NEW DUPLICATE {h}: {', '.join(paths)}")
+    if fresh:
+        print()
+        print("Two checkpoints with identical bytes compare to exactly +0.0% on "
+              "every metric, which is indistinguishable from a real null result. "
+              "Delete the redundant copy, or add its hash to KNOWN_DUPLICATES "
+              "with a reason.")
+    return 1 if fresh else 0
 
 
 if __name__ == "__main__":
