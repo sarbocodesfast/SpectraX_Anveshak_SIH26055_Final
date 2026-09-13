@@ -129,6 +129,9 @@ raises if entered while `eval_mode` is set.
 | `agents/predictors.py` | GRU / dilated TCN / Transformer; masked focal loss; distillation | `SequencePredictorScheduler` |
 | `agents/rl_agents.py` | From-scratch PPO + Double-DQN with action masking | `PPOScheduler`, `DQNScheduler` |
 | `agents/hybrid.py` | Predictor probabilities as an extra RL observation plane | `HybridScheduler` |
+| `agents/phased.py` | Sweep while discovery pays, then exploit; observable trigger | `PhasedScheduler` |
+| `agents/adaptive_phased.py` | Hand over on marginal value rather than a timer | `AdaptivePhasedScheduler` |
+| `agents/gate.py` | Lexicographic revisit-deadline constraint, wraps any scheduler | `CoverageGate` |
 | `analysis/scan_on_scan.py` | POI / TTI closed forms, `CoprimeSweepScheduler`, `PhaseLockedScheduler` | — |
 | `analysis/estimators.py` | Lomb–Scargle (window-deconvolved), CDIF/SDIF | `estimate_period_ls`, `estimate_period_sdif` |
 | `analysis/metrics.py` | TTFI, TWIR, staleness, waste, pop-up latency, bootstrap CIs | `evaluate_episode` |
@@ -498,6 +501,73 @@ on that feature would not inherit the problem.
 On EASY and HARD it does not schedule at all: under the greedy argmax it tunes to
 one channel for the whole episode. See §21-L for the diagnosis and for why its training return is not
 evidence to the contrary.
+
+---
+
+### 11.5 Scheduling over policies, not within one
+
+Every other scheduler here runs one policy for the whole episode, and the HARD
+results say that is the wrong shape.
+
+The uniform-prior argument is specific about *when* coverage wins. Emitter home
+channels are drawn i.i.d. uniform, so an emitter never yet intercepted has
+produced no observations and its channel posterior equals the prior — no
+training beats uniform coverage at finding it. That holds **before first
+contact and nowhere else**. Once an emitter is seen, its channel is known
+exactly and exploitation is strictly better informed.
+
+So the optimum is a *schedule over policies*. On HARD the two halves already
+exist and each wins the objective the other loses: `coprime_sweep` takes
+intercept time +35.1 % while giving up 35.1 % of interception rate, and
+`whittle` takes the rate +80.9 % with no significant intercept-time gain.
+Neither improves both, because each runs the wrong policy for half the episode.
+
+* **`PhasedScheduler`** tracks how many distinct channels have ever produced a
+  detection — available from `Observation.hits` alone — and hands over when
+  that count has not grown for `patience` slots. Both delegates see every
+  observation, so the exploit policy inherits a warm belief. Nothing reads
+  ground truth: `truth_ids` and `pfa_flags` are evaluation-only and untouched,
+  exactly as `BeliefState` avoids them. A false alarm can therefore *delay* the
+  hand-over, never bring it forward.
+* **`AdaptivePhasedScheduler`** replaces the timer. Sweeping `patience` on HARD
+  showed the parameter is the wrong object, and showed what the trigger should
+  compare instead: at the optimum, 25 of ~52 channels are still discovered
+  *after* hand-over, so the exploit policy is not a pure exploiter. The
+  question is therefore not "has discovery stopped?" but "does a policy that
+  discovers *and* harvests now beat one that only discovers?" — which is
+  observable without a counterfactual, by splitting each dwell's hits into
+  channels never seen before and channels already known.
+
+  It is kept as a **failed-but-informative** ablation: the mechanism is sound
+  and the held-out evaluation does not support a win over fixed `patience`. It
+  is documented rather than deleted because the reason it fails is the useful
+  part.
+
+### 11.6 `CoverageGate` — enforcing coverage instead of pricing it
+
+Value-based policies express coverage as a score,
+`value = P(occupied) + coverage_weight * staleness`, and that construction
+fails twice over.
+
+*Empirically:* across 8.26 M replayed dwells with an exogenous instrument,
+`P(detection | revisit gap)` is flat — 0.0343 / 0.0538 / 0.0750 on
+easy / medium / hard, homogeneous across gap bins at p = 0.81, 0.55, 0.31. The
+staleness term multiplies a quantity that predicts nothing.
+
+*Structurally:* two terms competing on one scalar means the larger wins
+**globally** and the other switches off. A sharper predictor widens `P` until
+staleness cannot compete and the policy parks. Sweeping `coverage_weight` from
+1 to 16 never recovered it.
+
+The gate is lexicographic instead: past the revisit deadline the receiver goes
+to the most overdue window; otherwise the policy chooses freely and keeps its
+whole score function. It selects by `window_max`, not `window_value` — a sum
+dilutes one desperately overdue channel among fresh neighbours, which is the
+exact failure it exists to prevent.
+
+It is **not** a general improvement. `phased` is worse on all three metrics
+under it, because phasing and gating are two mechanisms for the same job and
+are substitutes rather than complements.
 
 ---
 
