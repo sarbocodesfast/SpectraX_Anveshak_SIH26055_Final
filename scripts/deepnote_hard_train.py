@@ -50,6 +50,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 DATASET_SLUG = "ew-smart-scan-rf-environment"
+#: Which tier to train. Overridden by --tier; the module-level name is kept
+#: because the stage functions all read it and threading a parameter through
+#: every one of them would be churn for a script whose whole job is one run.
 TIER = "hard"
 CKPT = REPO_ROOT / "runs" / "checkpoints"
 REPORTS = REPO_ROOT / "reports"
@@ -244,10 +247,12 @@ def stage_evaluate(n_seeds: int, agents: tuple[str, ...]) -> dict:
 
 
 def main() -> int:
+    global TIER
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--stage", default="all",
                     choices=["all", "data", "predictor", "rl", "evaluate"])
+    ap.add_argument("--tier", default=TIER, choices=["easy", "medium", "hard"])
     ap.add_argument("--dataset-root", default="build/dataset")
     ap.add_argument("--windows-per-episode", type=int, default=600,
                     help="Windows sampled per episode. Higher uses more of each.")
@@ -257,6 +262,9 @@ def main() -> int:
     ap.add_argument("--rl", default="ppo,dqn,hybrid")
     ap.add_argument("--n-seeds", type=int, default=8)
     args = ap.parse_args()
+
+    TIER = args.tier
+    print(f"tier: {TIER}")
 
     try:
         import torch

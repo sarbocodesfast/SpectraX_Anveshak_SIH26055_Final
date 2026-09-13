@@ -1,106 +1,117 @@
 {
- "tier": "hard",
- "n_seeds": 3,
+ "tier": "medium",
+ "n_seeds": 1,
  "poisson_floor": {
-  "AgileBeamRadar": 0.44374731008107987,
-  "CircularScanRadar": 0.0040234119200233415,
-  "CommsBurst": 2.5299692255799318e-23,
-  "FrequencyAgile": 1.073591209580935e-100,
-  "PulsedRadar": 8.59836997230016e-136,
-  "SectorScanRadar": 3.094158060394598e-09
+  "AgileBeamRadar": 0.6872892787909722,
+  "CircularScanRadar": 0.019496896108597995,
+  "CommsBurst": 3.323596603384053e-27,
+  "FixedCW": 1.918555668934785e-136,
+  "FrequencyAgile": 3.1869017494128483e-99,
+  "PulsedRadar": 4.738380081506757e-111,
+  "SectorScanRadar": 6.083594068141523e-07
  },
  "totals": {
-  "AgileBeamRadar": 9,
-  "CircularScanRadar": 24,
-  "CommsBurst": 9,
-  "FrequencyAgile": 12,
-  "PulsedRadar": 12,
-  "SectorScanRadar": 9
+  "AgileBeamRadar": 1,
+  "CircularScanRadar": 3,
+  "CommsBurst": 1,
+  "FixedCW": 3,
+  "FrequencyAgile": 2,
+  "PulsedRadar": 4,
+  "SectorScanRadar": 1
  },
  "misses": {
   "sequential": {
-   "AgileBeamRadar": 6,
-   "CircularScanRadar": 4,
-   "CommsBurst": 1,
+   "AgileBeamRadar": 1,
+   "CircularScanRadar": 0,
+   "CommsBurst": 0,
+   "FixedCW": 0,
    "FrequencyAgile": 0,
    "PulsedRadar": 0,
-   "SectorScanRadar": 2
+   "SectorScanRadar": 0
   },
   "coprime_sweep": {
-   "AgileBeamRadar": 6,
-   "CircularScanRadar": 5,
-   "CommsBurst": 1,
+   "AgileBeamRadar": 1,
+   "CircularScanRadar": 1,
+   "CommsBurst": 0,
+   "FixedCW": 0,
    "FrequencyAgile": 0,
    "PulsedRadar": 0,
    "SectorScanRadar": 0
   },
   "whittle": {
-   "AgileBeamRadar": 8,
-   "CircularScanRadar": 9,
-   "CommsBurst": 1,
+   "AgileBeamRadar": 0,
+   "CircularScanRadar": 1,
+   "CommsBurst": 0,
+   "FixedCW": 0,
    "FrequencyAgile": 0,
    "PulsedRadar": 0,
-   "SectorScanRadar": 2
+   "SectorScanRadar": 0
   },
   "phase_locked": {
-   "AgileBeamRadar": 7,
-   "CircularScanRadar": 10,
+   "AgileBeamRadar": 0,
+   "CircularScanRadar": 1,
    "CommsBurst": 0,
+   "FixedCW": 0,
    "FrequencyAgile": 0,
    "PulsedRadar": 0,
-   "SectorScanRadar": 2
+   "SectorScanRadar": 0
   },
   "predictor": {
-   "AgileBeamRadar": 8,
-   "CircularScanRadar": 14,
-   "CommsBurst": 1,
-   "FrequencyAgile": 1,
-   "PulsedRadar": 0,
-   "SectorScanRadar": 6
-  },
-  "predictor_gc": {
-   "AgileBeamRadar": 8,
-   "CircularScanRadar": 10,
-   "CommsBurst": 1,
+   "AgileBeamRadar": 1,
+   "CircularScanRadar": 3,
+   "CommsBurst": 0,
+   "FixedCW": 0,
    "FrequencyAgile": 0,
    "PulsedRadar": 0,
    "SectorScanRadar": 1
   },
+  "predictor_gc": {
+   "AgileBeamRadar": 1,
+   "CircularScanRadar": 3,
+   "CommsBurst": 0,
+   "FixedCW": 0,
+   "FrequencyAgile": 0,
+   "PulsedRadar": 0,
+   "SectorScanRadar": 0
+  },
   "dqn": {
-   "AgileBeamRadar": 4,
-   "CircularScanRadar": 9,
-   "CommsBurst": 1,
+   "AgileBeamRadar": 1,
+   "CircularScanRadar": 2,
+   "CommsBurst": 0,
+   "FixedCW": 0,
    "FrequencyAgile": 0,
    "PulsedRadar": 0,
    "SectorScanRadar": 0
   },
   "ppo": {
-   "AgileBeamRadar": 8,
-   "CircularScanRadar": 15,
-   "CommsBurst": 6,
-   "FrequencyAgile": 1,
-   "PulsedRadar": 4,
-   "SectorScanRadar": 6
+   "AgileBeamRadar": 1,
+   "CircularScanRadar": 2,
+   "CommsBurst": 0,
+   "FixedCW": 0,
+   "FrequencyAgile": 0,
+   "PulsedRadar": 0,
+   "SectorScanRadar": 0
   },
   "hybrid": {
-   "AgileBeamRadar": 9,
-   "CircularScanRadar": 21,
-   "CommsBurst": 8,
-   "FrequencyAgile": 7,
-   "PulsedRadar": 12,
-   "SectorScanRadar": 7
+   "AgileBeamRadar": 0,
+   "CircularScanRadar": 3,
+   "CommsBurst": 0,
+   "FixedCW": 0,
+   "FrequencyAgile": 0,
+   "PulsedRadar": 0,
+   "SectorScanRadar": 0
   }
  },
  "total_misses": {
-  "sequential": 13,
-  "coprime_sweep": 12,
-  "whittle": 20,
-  "phase_locked": 19,
-  "predictor": 30,
-  "predictor_gc": 20,
-  "dqn": 14,
-  "ppo": 40,
-  "hybrid": 64
+  "sequential": 1,
+  "coprime_sweep": 2,
+  "whittle": 1,
+  "phase_locked": 1,
+  "predictor": 5,
+  "predictor_gc": 4,
+  "dqn": 3,
+  "ppo": 3,
+  "hybrid": 3
  },
  "failed": {}
 }
