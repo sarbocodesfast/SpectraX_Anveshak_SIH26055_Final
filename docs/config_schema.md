@@ -174,10 +174,67 @@ One block per scheduler. The two that carry design weight:
   violations rather than assuming it. `use_closed_form` takes the Liu & Zhao (2010) closed
   form when `p11 ≥ p01` and falls back to bisection otherwise.
 
+#### Phased hand-over
+
+* `phased_explore: coprime_sweep`, `phased_exploit: whittle` — the two delegates.
+  Both see **every** observation, including those taken while the other was
+  driving, so the exploit policy inherits a warm belief at hand-over rather
+  than starting blind. That is the point of sweeping first.
+* `phased_patience: 1500` — slots without a newly-detecting channel before
+  `phased` hands over. Sweeping it on HARD gives a clean phase transition, but
+  it also shows the parameter is the wrong object: the optimum moves with the
+  policy and with emitter density, and a slot count cannot transfer.
+* `adaptive_harvest_weight: 1.0`, `adaptive_margin: 0.0`,
+  `adaptive_ewma_span: 200` — `adaptive_phased` replaces the timer with
+  `harvest_weight * harvest_rate > discovery_rate + margin`, both sides EWMAs
+  of quantities read from `Observation.hits` alone. `harvest_weight` is still a
+  constant, deliberately: it is the mission's exchange rate between finding a
+  new emitter and collecting from a known one, and unlike a slot count it
+  carries meaning across tiers. The minimum exploration period is one sweep
+  revisit, `ceil(B/K)` dwells — not tuned, just the point before which the
+  discovery-rate estimate has not seen most of the band.
+
+#### Coverage constraint
+
+* `coverage_gate_slots: 0` — when positive, wraps the built agent in
+  `CoverageGate`: if any channel has gone unvisited this long the receiver goes
+  there, and only otherwise does the policy choose.
+
+  Coverage is **enforced, not priced**. The additive alternative
+  (`value = P(occupied) + coverage_weight * staleness`) fails twice over.
+  Empirically, `P(detection | revisit gap)` is flat across gap bins
+  (p = 0.81 / 0.55 / 0.31 on easy / medium / hard over 8.26 M replayed dwells),
+  so the staleness term multiplies a quantity that predicts nothing.
+  Structurally, two terms competing on one scalar means the larger wins
+  *globally* and the other switches off — sweeping `coverage_weight` from 1 to
+  16 never recovered it.
+
+  The gate selects by `window_max`, not `window_value`: summing staleness over
+  a window dilutes one desperately overdue channel among fresh neighbours,
+  which is exactly the failure it exists to prevent. Set it to 0 (the default)
+  and nothing is wrapped. See
+  [`reports/coverage_gate.md`](../reports/coverage_gate.md) for who it helps.
+
 ### 2.10 `predictor`
 
 `arch: gru | tcn | transformer` selects the model; all three share input, loss and a
-~200 k parameter budget so the comparison is fair. `loss: masked_focal` with
+~200 k parameter budget so the comparison is fair.
+
+> **`arch` is a default, not a description.** The loader honours whatever
+> architecture a checkpoint records, so this field does not tell you what a
+> given `.pt` file contains — and the two have disagreed in this repository.
+> Use `scripts/checkpoint_inventory.py`, or `describe_checkpoint()`, to ask the
+> file. A training run that omits `--arch` takes *this* value, which is how an
+> architecture change once rode along with a change of training corpus.
+
+`predict_every: 1` — reuse a prediction for this many dwells. Above 1 it trades
+freshness for latency; the cache is cleared in `reset()`. `refine_radius`
+bounds how far `predictor_sweep` may deviate from its sweep position.
+
+`batch_size` is a **scientific** hyper-parameter here, not a memory setting.
+Retraining one arm at batch 8 instead of 64 moved student AP 0.6915 → 0.7457,
+larger than several effects this project had attributed to the training
+corpus. It is recorded in every checkpoint manifest for that reason. `loss: masked_focal` with
 `focal_gamma: 2.0` — occupancy is 2–5 % positive and plain BCE collapses to "always idle".
 
 `predictor.distillation` is **training-time only**. `lambda_kd` weights the KL to a teacher

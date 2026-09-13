@@ -74,7 +74,7 @@ Four learning-based schedulers were built, trained and benchmarked:
 | Scheduler | Learning method | Trained on |
 |---|---|---|
 | `whittle` | **Restless multi-armed bandit.** Online Bayesian belief updated from hits and misses; Whittle index computed per channel per slot | learns **during** the mission |
-| `predictor` | Transformer occupancy model, teacher-student distillation | 3 tiers × supervised occupancy |
+| `predictor` | Occupancy model (GRU / TCN / Transformer), teacher-student distillation | 3 tiers × supervised occupancy |
 | `dqn` | Deep Q-network | 198 K – 3 M env steps |
 | `ppo` | Proximal policy optimisation | 198 K – 3 M env steps |
 | `hybrid` | Predictor features + learned policy head | 598 K – 3 M env steps |
@@ -87,6 +87,30 @@ discounted-Bayesian tracking (Garivier & Moulines; Raj & Kalyani). This is the
 right class of answer for *"absence of prior reliable intelligence"*: a model
 trained offline encodes exactly the prior intelligence the PS says you do not
 have.
+
+### When offline prediction helps, and when it does not
+
+The PS asks for prediction, so the honest answer has to say *under what
+conditions* prediction pays. Two controlled interventions settle it, 30 paired
+seeds each, one fixed checkpoint throughout so the model is a constant rather
+than a variable:
+
+| intervention | varied | frozen | result |
+|---|---|---|---|
+| persistence | emitter class mix | count (15), live channels, seeds | advantage over `whittle` crosses **+18.0 % → −30.2 %** |
+| density | count 15 → 30 | persistence profile, class proportions, seeds | sign unchanged; penalty **−297.5 % → −1660.2 %** |
+
+**Persistence sets the sign; density scales the magnitude.** Prediction-led
+exploitation is safe against emitters that persist, and the cost of a wrong
+call scales with how crowded the band is. This is the condition under which the
+PS's prediction requirement is worth acting on, stated as a measurement rather
+than an assumption — see [`../reports/persistence_figure.md`](../reports/persistence_figure.md).
+
+A practical warning for anyone building the online regime estimator this
+implies: **pooled persistence is useless for a mixture.** At half persistent
+emitters it reads 0.99, because the always-on emitters contribute nearly every
+detectable cell while the scanners hiding behind them are exactly the ones
+being missed. The estimator must track the persistence *distribution*.
 
 ### The offline deep-RL agents lose, and we report it
 
@@ -205,5 +229,20 @@ pip install -e ".[ml,viz,demo]"
 make benchmark                          # 30 seeds × 3 tiers → reports/
 python -m smartscan.cli estimate        # scan-period estimator validation
 python scripts/figures_of_merit.py      # the figures-of-merit table
-pytest -q                               # 200 tests
+python scripts/persistence_figure.py    # when prediction pays
+python scripts/checkpoint_inventory.py  # what each model file actually holds
+pytest -q                               # 204 tests
 ```
+
+### Which claims are evidence, and which are not
+
+[`../reports/evidence_status.md`](../reports/evidence_status.md) separates the
+two, with a "what varied / what was frozen" table beside each claim. A number
+here is only cited as evidence if that table is complete.
+
+Four confounds were found and are recorded there rather than quietly fixed,
+because each was caught by an anomaly rather than by a check — which is itself
+the finding. Every checkpoint now carries a training manifest, and
+`assert_comparable(a, b, target_factor=...)` **refuses** any comparison whose
+manifests differ in more than the named factor. Run against this project's own
+history it rejects the original confounds by name.
