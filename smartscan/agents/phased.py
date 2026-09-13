@@ -83,6 +83,15 @@ class PhasedScheduler(Scheduler):
         self._last_new = 0
         self._switched_at: int | None = None
 
+        # Telemetry. A sweep over `patience` says which value scored best; it
+        # does not say why, and the whole point of moving to an adaptive
+        # trigger is knowing what observable should drive it. These record what
+        # the hand-off actually cost and bought.
+        #: Channels that had ever detected at the moment of hand-over.
+        self.n_seen_at_switch = 0
+        #: Retunes, as a proxy for the settle cost the policy is paying.
+        self.n_retunes = 0
+
     def reset(self) -> None:
         """Reset both delegates and the hand-over state."""
         super().reset()
@@ -92,6 +101,8 @@ class PhasedScheduler(Scheduler):
         self._seen = set()
         self._last_new = 0
         self._switched_at = None
+        self.n_seen_at_switch = 0
+        self.n_retunes = 0
 
     def observe(self, obs: Any) -> None:
         """Track which channels have ever detected, and feed both delegates.
@@ -125,7 +136,24 @@ class PhasedScheduler(Scheduler):
         """Sweep until discovery stalls, then exploit."""
         if self._switched_at is None and t - self._last_new >= self.patience:
             self._switched_at = t
+            self.n_seen_at_switch = len(self._seen)
         delegate = self._exploit if self._switched_at is not None else self._explore
         action = int(delegate.act(belief, t))
+        if self.last_action is not None and action != self.last_action:
+            self.n_retunes += 1
         self.last_action = action
         return action
+
+    @property
+    def switch_slot(self) -> int | None:
+        """Slot at which the hand-over fired, or None if it never did."""
+        return self._switched_at
+
+    @property
+    def n_discovered_after_switch(self) -> int:
+        """Channels that first detected only after the hand-over.
+
+        The quantity the trigger is implicitly betting against: if this stays
+        high, exploration was abandoned too early.
+        """
+        return len(self._seen) - self.n_seen_at_switch if self._switched_at else 0
