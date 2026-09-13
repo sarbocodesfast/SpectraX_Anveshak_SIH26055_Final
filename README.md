@@ -651,7 +651,49 @@ Full annotated bibliography: [`docs/related_work.md`](docs/related_work.md).
   checked-in golden digests, per tier.
 * `torch_threads` is **pinned** (not core-count-derived), so CPU reduction order
   is identical across machines.
-* Every `metrics.json`, checkpoint and figure embeds the resolved config hash.
+* Every `metrics.json` and figure embeds the resolved config hash.
+
+### Checkpoint provenance, and why it is here
+
+An earlier version of this section claimed checkpoints embedded the config
+hash too. They did not — they held an architecture tag and a state dict, and
+nothing else. Four separate confounds followed from that gap and from its
+equivalents elsewhere, each caught by an independent anomaly rather than by a
+check:
+
+| confound | what gave it away |
+|---|---|
+| density vs emitter composition | tiers differ in five ways at once, so "as density rises" was unsupported |
+| checkpoint identity | a comparison returned *exactly* `+0.0%` on every metric — impossible for two different models |
+| architecture vs corpus | shipped weights are 1.31 MB, retrained are 0.93 MB |
+| batch size | a rerun at batch 8 instead of 64 moved student AP 0.6915 → 0.7457 |
+
+The last one is the reason batch size is treated here as a scientific
+hyperparameter rather than a memory setting: that shift is larger than several
+effects this project had credited to the training corpus.
+
+So every checkpoint now carries a **training manifest** — architecture,
+corpus, dataset hash, batch size, lr, epochs, patience, loss, hidden dim,
+layers, dropout, feature schema, seed, difficulty, code commit, timestamp —
+and three things use it:
+
+```bash
+python scripts/checkpoint_inventory.py     # what each file holds; which pairs are comparable
+```
+
+* `checkpoint_banner()` prints the weights under test at the top of every
+  benchmark, so the model is part of the record instead of an assumption.
+* `assert_comparable(a, b, target_factor=...)` **refuses** a comparison whose
+  manifests differ in more than the named factor, and refuses two files with
+  identical bytes. Run against this project's own history it rejects both
+  original confounds by name.
+* CI fails on a new duplicate checkpoint inside `runs/checkpoints/`.
+
+The honest current state is in [`reports/evidence_status.md`](reports/evidence_status.md):
+which claims are proved, which are quarantined, and the "what varied / what
+was frozen" table for each. As of now **no model-vs-model comparison in this
+repository is licensed**, which is the correct answer for a history in which
+no training run recorded its own recipe.
 
 ---
 
