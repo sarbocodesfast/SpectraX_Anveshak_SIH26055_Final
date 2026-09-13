@@ -72,6 +72,11 @@ class CoverageGate(Scheduler):
         #: Dwells the gate took away from the policy. Reported so the cost of
         #: the constraint is visible rather than hidden inside the score.
         self.n_vetoes = 0
+        # Inherit the wrapped policy's retune economics. The base Scheduler
+        # does not define retune_penalty -- policies that charge for a retune
+        # set it themselves -- so without this the gate raises AttributeError
+        # on its first veto, and gating must not change what a retune costs.
+        self.retune_penalty = float(getattr(inner, "retune_penalty", 0.0))
         # Inherit the delegate's period requirement: gating must not silently
         # stop the belief estimating periods the wrapped policy depends on.
         self.needs_periods = bool(getattr(inner, "needs_periods", False))
