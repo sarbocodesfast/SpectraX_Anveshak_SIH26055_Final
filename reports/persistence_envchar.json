@@ -1,0 +1,101 @@
+{
+ "A:n=5": {
+  "detect_duty": 0.0277681640625,
+  "frac_channels_live": 0.095703125,
+  "persist_10": 0.8097122230065328,
+  "persist_50": 0.8016260894923413,
+  "persist_200": 0.8053217881211681,
+  "mean_burst_slots": 2358.6728823535814,
+  "n_emitters": 5
+ },
+ "A:n=10": {
+  "detect_duty": 0.039990234374999996,
+  "frac_channels_live": 0.162109375,
+  "persist_10": 0.8121135279793397,
+  "persist_50": 0.7907787147290657,
+  "persist_200": 0.7785052163868633,
+  "mean_burst_slots": 2022.352541545291,
+  "n_emitters": 10
+ },
+ "A:n=15": {
+  "detect_duty": 0.0591083984375,
+  "frac_channels_live": 0.30859375,
+  "persist_10": 0.8225851639249747,
+  "persist_50": 0.8064162289170949,
+  "persist_200": 0.8085323804608755,
+  "mean_burst_slots": 1458.7763532971815,
+  "n_emitters": 15
+ },
+ "A:n=20": {
+  "detect_duty": 0.080684375,
+  "frac_channels_live": 0.384765625,
+  "persist_10": 0.7670793984933684,
+  "persist_50": 0.7567647880854801,
+  "persist_200": 0.7629898136015749,
+  "mean_burst_slots": 1422.8469834587709,
+  "n_emitters": 20
+ },
+ "A:n=25": {
+  "detect_duty": 0.1003876953125,
+  "frac_channels_live": 0.388671875,
+  "persist_10": 0.8149995094684558,
+  "persist_50": 0.7991913991022637,
+  "persist_200": 0.7938784721224603,
+  "mean_burst_slots": 1884.5189394175845,
+  "n_emitters": 25
+ },
+ "A:n=30": {
+  "detect_duty": 0.11826484375,
+  "frac_channels_live": 0.466796875,
+  "persist_10": 0.7925867074453924,
+  "persist_50": 0.7873661826047359,
+  "persist_200": 0.7762076955200413,
+  "mean_burst_slots": 1834.1700587558,
+  "n_emitters": 30
+ },
+ "B:p=0.00": {
+  "detect_duty": 0.0013447265625000002,
+  "frac_channels_live": 0.1171875,
+  "persist_10": 0.7147065998784126,
+  "persist_50": 0.14197296120748149,
+  "persist_200": 0.0,
+  "mean_burst_slots": 30.301585701590746,
+  "n_emitters": 15
+ },
+ "B:p=0.25": {
+  "detect_duty": 0.032267578125,
+  "frac_channels_live": 0.1171875,
+  "persist_10": 0.9917070533922323,
+  "persist_50": 0.9729114773705432,
+  "persist_200": 0.9686232484348847,
+  "mean_burst_slots": 2690.006427542118,
+  "n_emitters": 15
+ },
+ "B:p=0.50": {
+  "detect_duty": 0.0631078125,
+  "frac_channels_live": 0.1171875,
+  "persist_10": 0.9973571170800011,
+  "persist_50": 0.9917441951691142,
+  "persist_200": 0.9902962238392683,
+  "mean_burst_slots": 5346.697861401653,
+  "n_emitters": 15
+ },
+ "B:p=0.75": {
+  "detect_duty": 0.08628144531250001,
+  "frac_channels_live": 0.1171875,
+  "persist_10": 0.9990323882412844,
+  "persist_50": 0.9966766762275185,
+  "persist_200": 0.9960212563485283,
+  "mean_burst_slots": 7340.79707690837,
+  "n_emitters": 15
+ },
+ "B:p=1.00": {
+  "detect_duty": 0.1171875,
+  "frac_channels_live": 0.1171875,
+  "persist_10": 1.0,
+  "persist_50": 1.0,
+  "persist_200": 1.0,
+  "mean_burst_slots": 10000.0,
+  "n_emitters": 15
+ }
+}

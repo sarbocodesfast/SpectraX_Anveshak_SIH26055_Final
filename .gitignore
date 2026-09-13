@@ -74,6 +74,10 @@ reports/*
 !reports/hard_retrain_eval.json
 !reports/ps_objectives.json
 !reports/ps_objectives.md
+!reports/persistence_matrix.json
+!reports/persistence_envchar.json
+!reports/persistence_figure.json
+!reports/persistence_figure.md
 !reports/coverage_gate.json
 !reports/coverage_gate.md
 !reports/predictor_sweep_ps.json
