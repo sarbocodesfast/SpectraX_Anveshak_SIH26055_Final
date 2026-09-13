@@ -436,7 +436,7 @@ return of 192 against the tuned sweep's 214, and its TWIR is 41 % *worse*. Its
 max staleness is 10 s — the entire episode — meaning it learned to park on one
 window and abandon the band. Policy entropy did fall from 4.83 (uniform over 125
 legal actions) to 2.3, so it is learning something decisive, just not something
-good. The design document predicted this ordering (§17-B) before it was measured,
+good. The design document predicted this ordering ([architecture §17-B](docs/architecture.md#17-risks-and-open-issues)) before it was measured,
 and the headline claim was placed on the analytic policies accordingly.
 
 ---
@@ -615,7 +615,7 @@ cp .env.example .env       # then edit; .env is gitignored
 smartscan credentials      # reports what is configured, never a value
 ```
 
-Nothing here needs credentials. The simulator, all nine schedulers, the
+Nothing here needs credentials. The simulator, all nineteen schedulers, the
 benchmark and the tests run without them. Secrets are read from the environment,
 a gitignored `.env`, or the provider's own config file — never from the tree,
 and only ever reported as an 8-character fingerprint so a rotation is verifiable
@@ -771,8 +771,10 @@ Stated because they are the first things a reviewer should ask about.
    validation only*; the 10 s tiers are untouched for scheduler benchmarking.
 2. **Two TTFI analyses disagree, and only one is trustworthy.** The paired
    bootstrap discards `+inf` pairs — exactly the emitters never intercepted —
-   and ranks `epsilon_greedy` top. The log-rank test keeps them as censored
-   observations and ranks it last, at a hazard ratio of 0.513 (p = 1.2e-08).
+   and so rewards the policies that abandon hard targets. The log-rank test
+   keeps them as censored observations and inverts the ranking: `predictor`
+   comes **last** at a hazard ratio of 0.362 (p = 5.5e-13), missing 126 of 146,
+   with `epsilon_greedy` next at 0.513 (p = 1.2e-08).
    The bootstrap figures are retained only because the brief asks for a point
    estimate; **the log-rank result is the one to cite.** Comparisons below 10
    finite pairs are additionally withheld and reported as withheld.
@@ -866,7 +868,7 @@ Stated because they are the first things a reviewer should ask about.
    The difference the original measurement identified is still real and still
    tier difficulty rather than corpus size: `predictor_easy` reaches 0.957 from
    the smallest corpus of the three.
-6. **RL has not been trained to convergence** (§17-B, §21-G).
+6. **RL has not been trained to convergence** ([architecture §17-B](docs/architecture.md#17-risks-and-open-issues), [§21-G](docs/architecture.md#g-the-measured-ordering-versus-the-predicted-one)).
 7. **Sector-scan period estimates are ambiguous by a factor of 2.** A
    bidirectional sweep genuinely illuminates twice per frame.
 8. **The TTFI half of acceptance test 3 is a point estimate, not a significant
@@ -877,4 +879,5 @@ Stated because they are the first things a reviewer should ask about.
 
 ## Licence
 
-MIT. See [`docs/architecture.md`](docs/architecture.md) for the full design.
+MIT — see [`LICENSE`](LICENSE). The design document is
+[`docs/architecture.md`](docs/architecture.md).
