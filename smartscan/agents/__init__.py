@@ -68,6 +68,8 @@ register("whittle_predictor", _lazy("smartscan.agents.predictors",
 register("predictor_sweep", _lazy("smartscan.agents.predictors",
                                   "SweepRefinedPredictorScheduler"))
 register("phased", _lazy("smartscan.agents.phased", "PhasedScheduler"))
+register("adaptive_phased",
+         _lazy("smartscan.agents.adaptive_phased", "AdaptivePhasedScheduler"))
 register("dqn", _lazy("smartscan.agents.rl_agents", "DQNScheduler"))
 register("ppo", _lazy("smartscan.agents.rl_agents", "PPOScheduler"))
 register("hybrid", _lazy("smartscan.agents.hybrid", "HybridScheduler"))

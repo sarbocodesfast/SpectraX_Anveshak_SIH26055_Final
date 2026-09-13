@@ -132,9 +132,13 @@ class PhasedScheduler(Scheduler):
         """Whether the coverage phase is still running."""
         return self._switched_at is None
 
+    def _should_switch(self, t: int) -> bool:
+        """Whether to hand over now. Overridden by the adaptive variant."""
+        return t - self._last_new >= self.patience
+
     def act(self, belief: BeliefState, t: int) -> int:
-        """Sweep until discovery stalls, then exploit."""
-        if self._switched_at is None and t - self._last_new >= self.patience:
+        """Sweep until the trigger fires, then exploit."""
+        if self._switched_at is None and self._should_switch(t):
             self._switched_at = t
             self.n_seen_at_switch = len(self._seen)
         delegate = self._exploit if self._switched_at is not None else self._explore

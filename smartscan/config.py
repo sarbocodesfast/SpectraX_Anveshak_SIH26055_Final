@@ -578,6 +578,17 @@ class AgentsConfig(_Base):
     phased_exploit: str = "whittle"
     phased_patience: int = 1500
 
+    #: `adaptive_phased` replaces the patience timer with a marginal-value
+    #: comparison: hand over when weighted harvest overtakes discovery. The
+    #: weight is the mission's exchange rate between finding a new emitter and
+    #: collecting from a known one -- a constant with meaning, unlike a slot
+    #: count, and the thing that is supposed to transfer across tiers.
+    adaptive_harvest_weight: float = 1.0
+    #: Dead band on the comparison, so the trigger does not fire on noise.
+    adaptive_margin: float = 0.0
+    #: EWMA horizon, in dwells, for both rate estimates.
+    adaptive_ewma_span: int = 200
+
     #: Hard bound on the largest revisit gap, in slots. 0 disables the gate,
     #: which is the default so every published number keeps its meaning.
     #:
