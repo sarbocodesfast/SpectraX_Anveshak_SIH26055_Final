@@ -67,6 +67,7 @@ register("whittle_predictor", _lazy("smartscan.agents.predictors",
                                    "WhittlePredictorScheduler"))
 register("predictor_sweep", _lazy("smartscan.agents.predictors",
                                   "SweepRefinedPredictorScheduler"))
+register("phased", _lazy("smartscan.agents.phased", "PhasedScheduler"))
 register("dqn", _lazy("smartscan.agents.rl_agents", "DQNScheduler"))
 register("ppo", _lazy("smartscan.agents.rl_agents", "PPOScheduler"))
 register("hybrid", _lazy("smartscan.agents.hybrid", "HybridScheduler"))
@@ -93,4 +94,14 @@ def build_agent(key: str, config: Config, seed: int = 0, scenario: Any = None) -
     """
     if key not in _REGISTRY:
         raise KeyError(f"unknown agent {key!r}; registered: {sorted(_REGISTRY)}")
-    return _REGISTRY[key](config, seed, scenario)
+    agent = _REGISTRY[key](config, seed, scenario)
+
+    # Lexicographic coverage constraint, applied to every policy uniformly so
+    # the ablation is one flag rather than a parallel set of registry entries.
+    # Off by default, so nothing already measured changes.
+    gate = int(getattr(config.agents, "coverage_gate_slots", 0) or 0)
+    if gate > 0:
+        from smartscan.agents.gate import CoverageGate
+
+        agent = CoverageGate(agent, config, gate)
+    return agent

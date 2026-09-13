@@ -568,6 +568,30 @@ class AgentsConfig(_Base):
     #: and so tolerates a slightly stale one.
     predict_every: int = 1
 
+    #: `phased` hands over from a coverage policy to an exploitation policy
+    #: when sweeping stops finding channels that detect. The trigger is
+    #: observational rather than a timer: a fixed fraction would need tuning
+    #: per tier and would be wrong whenever emitter density differed from the
+    #: tuning run, whereas "no new detecting channel for this many slots" is
+    #: measured from Observation.hits and adapts by itself.
+    phased_explore: str = "coprime_sweep"
+    phased_exploit: str = "whittle"
+    phased_patience: int = 1500
+
+    #: Hard bound on the largest revisit gap, in slots. 0 disables the gate,
+    #: which is the default so every published number keeps its meaning.
+    #:
+    #: When set, EVERY scheduler is wrapped: if a channel has gone this long
+    #: unvisited the receiver goes there, and only otherwise does the policy
+    #: choose. Coverage stops being a term in a score -- which the corpus shows
+    #: predicts nothing, P(hit | revisit gap) being flat at p = 0.81/0.55/0.31
+    #: across tiers -- and becomes a constraint the policy cannot trade away.
+    #: Roughly one sweep period is the natural scale: `sequential` and
+    #: `coprime_sweep` already hold their largest gap near 620 slots, so a
+    #: bound in that region costs them nothing and binds only on policies that
+    #: were abandoning the band.
+    coverage_gate_slots: int = 0
+
     sequential_sweep: SequentialSweepConfig = SequentialSweepConfig()
     random_scan: RandomScanConfig = RandomScanConfig()
     priority_round_robin: PriorityRRConfig = PriorityRRConfig()
