@@ -214,6 +214,12 @@ def train(
              "path (e.g. build/dataset) instead of regenerating ~40 episodes "
              "from seeds. Removes the RAM ceiling entirely.",
     ),
+    dataset_episodes: int | None = typer.Option(
+        None, "--dataset-episodes",
+        help="Cap episodes read from --dataset. Use it to match the episode "
+             "count of a comparison arm, so that 'corpus' means which episodes "
+             "and not how many.",
+    ),
     set_: list[str] = _SET,
 ) -> None:
     """Train a learned scheduler and save its checkpoint."""
@@ -271,8 +277,14 @@ def train(
         if dataset:
             from smartscan.data.kaggle_io import OccupancyWindowDataset, load_dataset
 
-            tr = load_dataset("train", tier=tier, root=dataset, allow_download=False)
-            va = load_dataset("val", tier=tier, root=dataset, allow_download=False)
+            # Capping episodes is what makes a corpus comparison a *controlled*
+            # one. Without it the streaming arm reads every published episode
+            # while the seeds arm regenerates a few hundred, so "corpus" would
+            # vary episode count as well as episode provenance.
+            tr = load_dataset("train", tier=tier, root=dataset,
+                              allow_download=False, n_episodes=dataset_episodes)
+            va = load_dataset("val", tier=tier, root=dataset,
+                              allow_download=False, n_episodes=dataset_episodes)
             if tr.source == "regenerated":
                 raise typer.BadParameter(
                     f"no usable corpus at {dataset!r}: it fell back to regenerating "
