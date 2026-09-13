@@ -14,7 +14,7 @@ it is *unknown*. Everything here follows from that.
 pip install -e ".[ml,viz,demo]"
 make demo         # live dashboard in a browser — offline, one command
 make benchmark    # results.parquet, leaderboard.md/.tex and figures F1–F7
-pytest -q         # 200 tests
+pytest -q         # 204 tests
 ```
 
 ---
@@ -64,9 +64,18 @@ a reinforcement-learning formalism; the belief update is the standard discounted
 tracker (Garivier & Moulines; Raj & Kalyani). Nothing it acts on is known before
 the mission starts.
 
-Offline learning is here too, and benchmarked honestly: a distilled Transformer
-occupancy predictor (`predictor`), `dqn`, `ppo`, and a `hybrid`, trained for
-198 K – 3 M environment steps each.
+Offline learning is here too, and benchmarked honestly: a distilled occupancy
+predictor (`predictor`), `dqn`, `ppo`, and a `hybrid`, trained for 198 K – 3 M
+environment steps each.
+
+> **On the predictor's architecture.** Earlier revisions of this file called it
+> a Transformer. The shipped EASY and MEDIUM weights are, but HARD's are a GRU,
+> and `configs/base.yaml` declares `gru` as the default regardless — so a
+> retraining run that omitted `--arch` silently changed architecture. Runtime
+> stayed correct, because the loader honours each checkpoint's own tag, but the
+> comparisons built on top of it did not. Which architecture ships is an open
+> decision pending a corpus × architecture control; the provenance machinery
+> that makes it answerable is under [Reproducibility](#reproducibility).
 
 **They lose.** On emitters never intercepted, across 30 seeds per tier:
 
@@ -113,6 +122,7 @@ Clause-by-clause mapping, including all seven figures of merit:
 smartscan/
   env/         emitters (8 classes) · propagation · calibration · receiver · gym_env
   agents/      belief · baselines · bandits · whittle · predictors · rl_agents · hybrid
+               phased · adaptive_phased · gate
   analysis/    scan_on_scan · estimators · metrics
   eval/        benchmark · ablation · scan_validation · plots
   data/        schema · dataset_builder · kaggle_io · tsrd_bridge
@@ -124,25 +134,79 @@ configs/       base · easy · medium · hard · scan_on_scan
 docs/          ps_compliance · architecture · theory · related_work · config_schema
                hardware_roadmap
 notebooks/     4 local + 2 Kaggle training notebooks
-scripts/       figures_of_merit · check_dashboard · publish_kaggle · sweeps
+scripts/       figures_of_merit · checkpoint_inventory · persistence_figure
+               coverage_gate_report · check_dashboard · publish_kaggle · sweeps
 tests/         env · analysis · reproducibility · acceptance · agents · data
 ```
 
-### Sixteen schedulers, one interface
+### Nineteen schedulers, one interface
 
 All implement `act(belief, t) -> action` and see the **same** belief — so a
 comparison between them is a comparison of policies, not of information.
 
+This is not an algorithm zoo. Roughly half exist to be *beaten* in a controlled
+way: `sequential` is the open-loop strawman the PS names, `priority_rr` models a
+briefing that is wrong 40 % of the time, and the three diagnostic variants were
+built to isolate **why** the predictor parks rather than to win anything.
+
 | Family | Schedulers |
 |---|---|
-| Open-loop baselines | `sequential` (tuned saw-tooth), `random`, `priority_rr` (briefing wrong 40 % of the time) |
+| Open-loop baselines | `sequential` (tuned saw-tooth), `random`, `priority_rr` |
 | Statistical bandits | `epsilon_greedy`, `ucb1` (discounted), `thompson` |
 | **Restless bandit** | `whittle` — numerical index with **verified** indexability |
 | **Scan-on-scan** | `coprime_sweep` (golden-ratio Weyl), `phase_locked` (predict-and-park) |
-| Supervised | `predictor` — GRU / dilated TCN / Transformer, privileged distillation |
+| **Phased** | `phased` — sweep while discovery pays, then exploit; `adaptive_phased` — hands over on a marginal-value comparison rather than a timer |
+| Supervised | `predictor`, `predictor_sweep` — GRU / dilated TCN / Transformer, privileged distillation |
 | RL | `dqn`, `ppo` — from scratch, action-masked |
 | Hybrid | `hybrid` — predictor output as an extra RL observation plane |
-| Diagnostic | `predictor_de` (dwell-efficient), `predictor_gc` (guaranteed coverage), `whittle_predictor` — built to isolate *why* the predictor parks; see [`docs/related_work.md`](docs/related_work.md) |
+| Diagnostic | `predictor_de` (dwell-efficient), `predictor_gc` (guaranteed coverage), `whittle_predictor` — see [`docs/related_work.md`](docs/related_work.md) |
+
+Any of them can be wrapped in **`CoverageGate`**, a lexicographic constraint
+that sends the receiver to the most overdue channel when one passes its revisit
+deadline, and otherwise lets the policy choose. It is *not* a general
+improvement, and [`reports/coverage_gate.md`](reports/coverage_gate.md) says
+who it helps and who it merely taxes — `phased` is worse on all three metrics
+under it, because phasing and gating are substitutes rather than complements.
+
+---
+
+## When is a learned predictor worth using? The one result to read first
+
+Across the three tiers a sharper predictor sometimes helped the scheduler and
+sometimes destroyed it. The tiers differ in **five** ways at once, so no tier
+comparison could say which mattered — and the obvious reading, that emitter
+density drives it, turned out to be a confound.
+
+Two controlled interventions separate the candidates, 30 paired seeds each,
+one fixed checkpoint throughout so the model is a constant rather than a
+variable:
+
+| intervention | varied | frozen |
+|---|---|---|
+| **persistence** | emitter class mix | emitter count (15), live-channel count, seeds |
+| **density** | emitter count (15 → 30) | persistence profile (57.8 % below 0.5), class proportions, seeds |
+
+* **Persistence sets the sign.** Holding emitter count at 15 and swinging
+  composition from all-persistent to half, the predictor's intercept-time
+  advantage over `whittle` crosses **+18.0 % → −30.2 %**. Density never moves.
+* **Density scales the magnitude.** At an *identical* persistence profile,
+  doubling the emitter count leaves the sign alone and takes the penalty from
+  **−297.5 % → −1660.2 %**, and excess emitters missed from 97 to 178.
+
+So prediction-led exploitation is safe when targets persist, and the cost of a
+wrong call scales with how crowded the band is. The all-scanning anchor is
+**not** a third point on that trend — its detectable duty is 0.0013 and
+`whittle`'s median time to first intercept is infinite, so it is a saturation
+regime and is plotted separately.
+
+One trap worth naming: **pooled persistence is useless for a mixture.** At half
+persistent emitters it reads 0.99, because the always-on emitters contribute
+nearly every detectable cell while the scanners hiding behind them are exactly
+the ones being missed. Any online regime estimator has to estimate the
+persistence *distribution*, not its average.
+
+[`reports/persistence_figure.md`](reports/persistence_figure.md) ·
+[`reports/evidence_status.md`](reports/evidence_status.md)
 
 ---
 
