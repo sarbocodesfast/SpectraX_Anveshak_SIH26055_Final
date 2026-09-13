@@ -134,9 +134,15 @@ def benchmark(
     set_: list[str] = _SET,
 ) -> None:
     """Run the paired benchmark and write metrics, leaderboard and comparisons."""
+    from smartscan.agents.predictors import checkpoint_banner
     from smartscan.eval.benchmark import leaderboard_markdown, run_benchmark
 
     cfg = _resolve(config, set_)
+    # State which weights are under test before any number is produced. The
+    # alternative -- inferring the model from the checkpoint's filename -- is
+    # what let a replaced checkpoint be compared against itself.
+    if banner := checkpoint_banner(cfg):
+        typer.secho(banner, fg=typer.colors.CYAN)
     if n_seeds is not None:
         cfg = cfg.with_overrides(run={"n_seeds": n_seeds})
     keys = [a.strip() for a in agents.split(",")] if agents else None
@@ -310,7 +316,18 @@ def train(
             max_windows_per_episode=windows_per_episode,
             loaders=loaders, checkpoint_path=path,
         )
-        save_predictor_checkpoint(model, history["arch"], path)
+        # Record the whole recipe, not just the architecture. Two checkpoints
+        # are only comparable when they differ in the factor under study, and
+        # `assert_comparable` can enforce that solely from what is written here.
+        save_predictor_checkpoint(
+            model, history["arch"], path, config=cfg,
+            provenance={
+                "training_corpus": (f"dataset:{dataset}" if dataset else
+                                    f"seeds:{len(train_seeds)}"
+                                    f"x{windows_per_episode}"),
+                "dataset_hash": history.get("dataset_hash"),
+            },
+        )
         # The sidecar only ever describes a partial run.
         (ckpt_dir / f"predictor_{tier}_progress.json").unlink(missing_ok=True)
         _write_json(ckpt_dir / f"predictor_{tier}_history.json", history)

@@ -60,12 +60,34 @@ from typing import Any
 import numpy as np
 
 from smartscan.agents.base import Scheduler
-from smartscan.agents.belief import BeliefState
+from smartscan.agents.belief import (
+    N_CHANNEL_FEATURES,
+    N_GLOBAL_FEATURES,
+    BeliefState,
+)
 from smartscan.config import Config, checkpoint_dir
 
+
+class CheckpointProvenanceWarning(UserWarning):
+    """A checkpoint does not match the configuration that asked for it.
+
+    Its own category rather than a bare ``RuntimeWarning`` so that callers can
+    filter on it precisely, and so CI can be made to fail on it once the
+    shipped checkpoints and the declared architecture agree. Today they do not:
+    ``configs/base.yaml`` declares ``gru`` while the shipped EASY and MEDIUM
+    weights are transformers, which is the mechanism behind the architecture
+    confound -- a retraining run that did not pass ``--arch`` silently took the
+    config default and changed architecture along with the corpus.
+    """
+
+
 __all__ = [
+    "MANIFEST_FIELDS",
+    "CheckpointProvenanceWarning",
+    "IncomparableCheckpointsError",
     "PrivilegedAccess",
     "SequencePredictorScheduler",
+    "assert_comparable",
     "build_predictor",
     "build_windows",
     "masked_focal_loss",
@@ -466,7 +488,9 @@ def masked_focal_loss(
     return (loss * m).sum() / m.sum().clamp(min=1.0)
 
 
-def save_predictor_checkpoint(model: Any, arch: str, path: str | Path) -> None:
+def save_predictor_checkpoint(model: Any, arch: str, path: str | Path,
+                              provenance: dict[str, Any] | None = None,
+                              config: Config | None = None) -> None:
     """Save weights together with the architecture that produced them.
 
     A bare ``state_dict`` does not say which network it came from, so loading
@@ -478,9 +502,214 @@ def save_predictor_checkpoint(model: Any, arch: str, path: str | Path) -> None:
         model: Trained module.
         arch: Architecture key the weights belong to.
         path: Destination file.
+        provenance: Extra provenance -- training corpus, dataset hash.
+            Recorded so an evaluation can print what it actually loaded.
+        config: Resolved config, mined for the rest of the training recipe so
+            that :func:`assert_comparable` can check a comparison without
+            being told what the run did.
     """
     torch = _require_torch()
-    torch.save({"arch": arch, "state_dict": model.state_dict()}, Path(path))
+    torch.save({"arch": arch, "state_dict": model.state_dict(),
+                "provenance": checkpoint_provenance(arch, config,
+                                                     **(provenance or {}))},
+               Path(path))
+
+
+def checkpoint_provenance(arch: str, config: Config | None = None,
+                          **extra: Any) -> dict[str, Any]:
+    """Everything needed to say what a checkpoint actually is.
+
+    The architecture alone was already stored and was still not enough. A file
+    named ``predictor_hard.pt`` was silently replaced by a differently-trained
+    model, and an evaluation then compared it against itself and reported
+    ``+0.0%`` on every metric -- which reads as a null result rather than the
+    plumbing fault it was. Separately, a retraining run changed architecture
+    and training corpus together, so the improvement it produced cannot be
+    attributed to either.
+
+    Neither failure needed better bookkeeping inside the file. Both needed the
+    provenance to be *visible* at evaluation time, which is what
+    :func:`describe_checkpoint` is for.
+    """
+    import contextlib
+    import subprocess
+    from datetime import UTC, datetime
+
+    commit = "unknown"
+    # A checkpoint saved outside a checkout is still worth saving.
+    with contextlib.suppress(Exception):
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+            text=True, timeout=10, cwd=str(Path(__file__).resolve().parents[2]),
+        ).stdout.strip() or "unknown"
+    out: dict[str, Any] = dict.fromkeys(MANIFEST_FIELDS)
+    out.update({
+        "architecture": arch,
+        "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "code_commit": commit,
+    })
+    if config is not None:
+        pc = config.predictor
+        out.update({
+            "batch_size": pc.batch_size,
+            "lr": pc.lr,
+            "epochs": pc.epochs,
+            "patience": pc.patience,
+            "loss": pc.loss,
+            "hidden_dim": pc.hidden_dim,
+            "n_layers": pc.n_layers,
+            "dropout": pc.dropout,
+            "feature_schema": f"{N_CHANNEL_FEATURES}c+{N_GLOBAL_FEATURES}g",
+            "seed": config.run.seed,
+            "difficulty": config.scenario.difficulty,
+        })
+    out.update({k: v for k, v in extra.items() if v is not None})
+    return out
+
+
+#: Every factor that can move measured model quality, so that two checkpoints
+#: are comparable only when they differ in the one being studied.
+#:
+#: ``batch_size`` is on this list because of a measurement, not on principle.
+#: Rerunning the EASY transformer arm at batch 8 instead of 64 moved student AP
+#: from 0.6915 to 0.7457 -- larger than several effects this project had
+#: attributed to the training corpus. A factor that can do that is a scientific
+#: hyperparameter and belongs in the manifest, not in a memory workaround.
+MANIFEST_FIELDS: tuple[str, ...] = (
+    "architecture", "training_corpus", "dataset_hash", "batch_size", "lr",
+    "epochs", "patience", "loss", "hidden_dim", "n_layers", "dropout",
+    "feature_schema", "seed", "difficulty", "code_commit", "saved_at",
+)
+
+#: Fields that legitimately differ between two runs of the same experiment and
+#: therefore never block a comparison on their own.
+_INCIDENTAL: frozenset[str] = frozenset({"saved_at", "code_commit"})
+
+
+class IncomparableCheckpointsError(AssertionError):
+    """Two checkpoints differ in more than the factor under study."""
+
+
+def assert_comparable(a: str | Path, b: str | Path, target_factor: str,
+                      *, ignore: Sequence[str] = ()) -> dict[str, tuple]:
+    """Refuse a comparison that varies more than ``target_factor``.
+
+    The architecture confound was not a reasoning error -- it was an
+    unchecked precondition. A transformer trained on the shipped corpus was
+    compared against a GRU trained on the full corpus, and the difference was
+    reported as the corpus's doing. Nothing in the pipeline was in a position
+    to object, because nothing knew what either file contained.
+
+    This is that objection, made mechanical. It compares two manifests and
+    passes only when every recorded factor except ``target_factor`` agrees.
+
+    Args:
+        a: First checkpoint.
+        b: Second checkpoint.
+        target_factor: The one field the comparison is *about*.
+        ignore: Further fields to disregard, for deliberate exceptions. Each
+            one widens what the comparison silently absorbs, so name them.
+
+    Returns:
+        The differing fields as ``{field: (a_value, b_value)}``, which for a
+        passing call is either empty or exactly ``target_factor``.
+
+    Raises:
+        ValueError: If ``target_factor`` is not a manifest field.
+        IncomparableCheckpointsError: If any other field differs, or if either
+            manifest lacks the values needed to tell.
+    """
+    if target_factor not in MANIFEST_FIELDS:
+        raise ValueError(
+            f"{target_factor!r} is not a recorded factor; expected one of "
+            f"{', '.join(MANIFEST_FIELDS)}")
+    skip = _INCIDENTAL | {target_factor} | set(ignore)
+    da, db = describe_checkpoint(a), describe_checkpoint(b)
+    for d, path in ((da, a), (db, b)):
+        if d.get("error"):
+            raise IncomparableCheckpointsError(f"{Path(path).name}: {d['error']}")
+
+    if da.get("sha1") == db.get("sha1"):
+        raise IncomparableCheckpointsError(
+            f"{Path(a).name} and {Path(b).name} are the same bytes "
+            f"({da.get('sha1')}). Comparing a model against itself returns "
+            "+0.0% on every metric, which is indistinguishable from a real "
+            "null result.")
+
+    differs, unknown = {}, []
+    for field in MANIFEST_FIELDS:
+        if field in skip:
+            continue
+        va, vb = da.get(field), db.get(field)
+        if va is None or vb is None:
+            unknown.append(field)
+        elif va != vb:
+            differs[field] = (va, vb)
+
+    if differs:
+        detail = "; ".join(f"{k}: {v[0]!r} vs {v[1]!r}" for k, v in differs.items())
+        raise IncomparableCheckpointsError(
+            f"comparison is about {target_factor!r} but these also differ -- "
+            f"{detail}. Any measured difference is attributable to all of them "
+            "jointly. Retrain with the other factors frozen, or name them in "
+            "`ignore` to record the exception deliberately.")
+    if unknown:
+        raise IncomparableCheckpointsError(
+            f"cannot verify {', '.join(unknown)} -- one or both checkpoints "
+            "predate the training manifest. Retrain, or pass them in `ignore` "
+            "to accept an unverifiable comparison.")
+    tgt = (da.get(target_factor), db.get(target_factor))
+    return {target_factor: tgt} if tgt[0] != tgt[1] else {}
+
+
+def checkpoint_banner(config: Config) -> str:
+    """One line naming the predictor weights a run is about to use.
+
+    Printed at the top of a benchmark so the model under test is part of the
+    record rather than an assumption. An evaluation that silently loaded a
+    replaced checkpoint reported ``+0.0%`` on every metric; with this line in
+    the log the two runs would have shown the same hash and the fault would
+    have been obvious before the numbers were believed.
+
+    Returns an empty string when there are no weights to describe -- for a
+    torch-free install, or a scenario with no trained predictor -- so callers
+    can print it unconditionally.
+    """
+    path = checkpoint_dir(config) / f"predictor_{config.scenario.difficulty}.pt"
+    if not path.is_file():
+        return ""
+    try:
+        d = describe_checkpoint(path)
+    except Exception:
+        return ""
+    if d.get("error"):
+        return ""
+    return (f"predictor: {path.name} arch={d.get('architecture', '?')} "
+            f"sha1={d.get('sha1', '-')} "
+            f"corpus={d.get('training_corpus', 'unrecorded')} "
+            f"commit={d.get('code_commit', 'unrecorded')}")
+
+
+def describe_checkpoint(path: str | Path) -> dict[str, Any]:
+    """Read a checkpoint's provenance without building the model.
+
+    Missing provenance is reported as unknown rather than raising: every
+    checkpoint shipped before this existed lacks it, and refusing to describe
+    them would make the check unusable exactly where it is most needed.
+    """
+    torch = _require_torch()
+    p = Path(path)
+    if not p.is_file():
+        return {"path": str(p), "error": "missing"}
+    blob = torch.load(p, map_location="cpu", weights_only=True)
+    prov = dict(blob.get("provenance") or {}) if isinstance(blob, dict) else {}
+    prov.setdefault("architecture", blob.get("arch", "unknown")
+                    if isinstance(blob, dict) else "unknown")
+    prov["path"] = str(p)
+    prov["bytes"] = p.stat().st_size
+    import hashlib
+    prov["sha1"] = hashlib.sha1(p.read_bytes()).hexdigest()[:12]
+    return prov
 
 
 def load_predictor_checkpoint(config: Config, path: str | Path, torch: Any = None) -> Any:
@@ -506,6 +735,17 @@ def load_predictor_checkpoint(config: Config, path: str | Path, torch: Any = Non
         arch, state = blob.get("arch"), blob["state_dict"]
     else:
         arch, state = None, blob
+    if arch and arch != config.predictor.arch:
+        # Not fatal: loading a GRU under a transformer config is legitimate, and
+        # `build_predictor` honours the checkpoint's own arch. What is not
+        # legitimate is doing it silently, which is how an entire evaluation
+        # came to attribute an architecture change to a change of corpus.
+        warnings.warn(
+            f"{Path(path).name} holds a {arch!r} model but the config asks for "
+            f"{config.predictor.arch!r}; the checkpoint's architecture wins. "
+            "Any comparison against a differently-built checkpoint varies "
+            "architecture as well as whatever it meant to vary.",
+            CheckpointProvenanceWarning, stacklevel=2)
     model = build_predictor(config, arch)
     try:
         model.load_state_dict(state)

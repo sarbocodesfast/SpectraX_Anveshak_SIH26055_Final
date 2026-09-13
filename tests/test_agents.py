@@ -486,3 +486,166 @@ def test_guaranteed_coverage_prefers_the_single_starved_channel(cfg):
     assert fixed[a_starved] > fixed[a_crowded], (
         "the fix must favour the window holding the single most overdue channel"
     )
+
+
+def test_checkpoint_records_and_reports_its_own_architecture(tmp_path):
+    """A checkpoint must say what it is without relying on its filename.
+
+    Three confounds in this project came from a filename being trusted: a
+    model replaced in place and then compared against itself for `+0.0%`, and
+    a retraining run that moved architecture and corpus together. The defence
+    is that the file answers for itself and that two files under different
+    names are distinguishable by content.
+    """
+    pytest.importorskip("torch")
+    from smartscan.agents.predictors import (
+        build_predictor,
+        describe_checkpoint,
+        save_predictor_checkpoint,
+    )
+
+    config = load_config("easy.yaml")
+    model = build_predictor(config, "gru")
+    misleading = tmp_path / "predictor_transformer_looking_name.pt"
+    save_predictor_checkpoint(model, "gru", misleading,
+                              provenance={"training_corpus": "unit-test"})
+
+    described = describe_checkpoint(misleading)
+    assert described["architecture"] == "gru"
+    assert described["training_corpus"] == "unit-test"
+    assert len(described["sha1"]) == 12
+
+    # Two saves of the same weights under different names must be detectable as
+    # the same model, which is what makes a self-comparison visible.
+    twin = tmp_path / "predictor_fullcorpus.pt"
+    save_predictor_checkpoint(model, "gru", twin)
+    assert describe_checkpoint(twin)["architecture"] == "gru"
+
+    # A checkpoint that predates provenance is described, not rejected.
+    import torch
+    legacy = tmp_path / "legacy.pt"
+    torch.save({"arch": "gru", "state_dict": model.state_dict()}, legacy)
+    assert describe_checkpoint(legacy)["architecture"] == "gru"
+    assert describe_checkpoint(tmp_path / "absent.pt")["error"] == "missing"
+
+
+def test_loading_a_mismatched_architecture_warns_rather_than_passing_silently(
+    tmp_path,
+):
+    """Silence is what let an architecture change ride along with a corpus change."""
+    pytest.importorskip("torch")
+    from smartscan.agents.predictors import (
+        CheckpointProvenanceWarning,
+        build_predictor,
+        load_predictor_checkpoint,
+        save_predictor_checkpoint,
+    )
+
+    config = load_config("easy.yaml", {"predictor.arch": "transformer"})
+    path = tmp_path / "predictor_hard.pt"
+    save_predictor_checkpoint(build_predictor(config, "gru"), "gru", path)
+
+    with pytest.warns(CheckpointProvenanceWarning, match="architecture"):
+        model = load_predictor_checkpoint(config, path)
+    # The checkpoint's own architecture still wins; the warning is the point.
+    assert model is not None
+
+
+
+def test_shipped_checkpoints_disagree_with_the_declared_architecture():
+    """The mismatch that produced the architecture confound, pinned as a fact.
+
+    `configs/base.yaml` declares `gru`, but the shipped EASY and MEDIUM
+    weights are transformers. `build_predictor` honours the checkpoint, so the
+    disagreement never surfaced -- and a retraining run that omitted `--arch`
+    took the declared default and changed architecture at the same time as the
+    training corpus, leaving the two inseparable.
+
+    This test documents the current state rather than approving it. When the
+    shipping decision makes config and checkpoints agree, it should be
+    inverted to assert they match.
+    """
+    pytest.importorskip("torch")
+    from smartscan.agents.predictors import describe_checkpoint
+    from smartscan.config import checkpoint_dir
+
+    seen = {}
+    for tier in ("easy", "medium", "hard"):
+        cfg = load_config(f"{tier}.yaml")
+        path = checkpoint_dir(cfg) / f"predictor_{tier}.pt"
+        if path.is_file():
+            seen[tier] = (cfg.predictor.arch, describe_checkpoint(path)["architecture"])
+    if not seen:
+        pytest.skip("no shipped checkpoints present")
+    # Whatever the values are, a tier whose checkpoint disagrees with its config
+    # must be visible here rather than resolved silently at load time.
+    assert any(declared != actual for declared, actual in seen.values()), (
+        f"config and checkpoints now agree ({seen}); invert this test and make "
+        "CheckpointProvenanceWarning an error in pyproject filterwarnings"
+    )
+
+
+def test_comparing_two_checkpoints_rejects_every_extra_varying_factor(tmp_path):
+    """The precondition that the architecture confound violated, made mechanical.
+
+    A transformer trained on the shipped corpus was compared against a GRU
+    trained on the full corpus, and the difference was reported as the
+    corpus's doing. Nothing objected, because nothing knew what either file
+    held. This is that objection.
+    """
+    pytest.importorskip("torch")
+    from smartscan.agents.predictors import (
+        IncomparableCheckpointsError,
+        assert_comparable,
+        build_predictor,
+        save_predictor_checkpoint,
+    )
+
+    cfg = load_config("easy.yaml")
+    big = load_config("easy.yaml", {"predictor.batch_size": cfg.predictor.batch_size * 2})
+
+    def write(name, arch, config, **prov):
+        path = tmp_path / name
+        save_predictor_checkpoint(build_predictor(config, arch), arch, path,
+                                  config=config, provenance=prov)
+        return path
+
+    gru_old = write("a.pt", "gru", cfg, training_corpus="shipped", dataset_hash="h1")
+    gru_new = write("b.pt", "gru", cfg, training_corpus="full", dataset_hash="h2")
+    tfm_new = write("c.pt", "transformer", cfg, training_corpus="full", dataset_hash="h2")
+    gru_batch = write("d.pt", "gru", big, training_corpus="shipped", dataset_hash="h1")
+
+    # Corpus alone varies (dataset_hash moves with it, so it is named).
+    assert assert_comparable(gru_old, gru_new, target_factor="training_corpus",
+                             ignore=("dataset_hash",)) == {
+        "training_corpus": ("shipped", "full")}
+
+    # The real confound: architecture AND corpus. Rejected, naming architecture.
+    with pytest.raises(IncomparableCheckpointsError, match="architecture"):
+        assert_comparable(gru_old, tfm_new, target_factor="training_corpus",
+                          ignore=("dataset_hash",))
+
+    # Batch size is a scientific factor, not a memory setting: a batch change
+    # moved student AP 0.6915 -> 0.7457, larger than effects this project had
+    # credited to the corpus. So it must block a corpus comparison too.
+    with pytest.raises(IncomparableCheckpointsError, match="batch_size"):
+        assert_comparable(gru_old, gru_batch, target_factor="training_corpus",
+                          ignore=("dataset_hash",))
+
+    # Same bytes under two names is the +0.0% self-comparison.
+    twin = write("e.pt", "gru", cfg, training_corpus="shipped", dataset_hash="h1")
+    import shutil
+    shutil.copyfile(gru_old, twin)
+    with pytest.raises(IncomparableCheckpointsError, match="same bytes"):
+        assert_comparable(gru_old, twin, target_factor="training_corpus")
+
+    # A checkpoint with no manifest cannot be silently compared.
+    import torch
+    legacy = tmp_path / "legacy.pt"
+    torch.save({"arch": "gru", "state_dict": build_predictor(cfg, "gru").state_dict()},
+               legacy)
+    with pytest.raises(IncomparableCheckpointsError, match="predate the training manifest"):
+        assert_comparable(legacy, gru_new, target_factor="training_corpus")
+
+    with pytest.raises(ValueError, match="not a recorded factor"):
+        assert_comparable(gru_old, gru_new, target_factor="vibes")
