@@ -10,6 +10,40 @@ frequencies, scan periods or activity patterns.
 The receiver sees **1/32 of the band at a time**. The other 31/32 is not empty;
 it is *unknown*. Everything here follows from that.
 
+> **SmartScan studies when prediction is worth trusting in closed-loop
+> receiver scheduling — not which model wins in isolation.**
+
+That is the lens for every number below. The project's contribution is the
+*conditions* under which prediction-led exploitation helps, and the
+experimental discipline that established them:
+
+| what the experiments establish | qualifier |
+|---|---|
+| **Temporal persistence selects the regime.** Holding emitter count fixed, the predictor's intercept-time advantage crosses **+18.0% → −30.2%** as half the emitters become non-persistent | 30 paired seeds/condition, bootstrap CI, Wilcoxon |
+| **Density amplifies the cost of a wrong exploitation decision**, without changing its sign — **−297.5% → −1660.2%** at an identical persistence profile | 30 paired seeds, persistence held constant |
+| **Architecture and training volume interact strongly**: the GRU gains **16.4×** what the Transformer gains from 5× more data, and the ranking reverses | **one seed per cell — descriptive, no significance claimed** |
+| **Deployment is decided by a latency gate, not by accuracy.** The Transformer ships at 2.12 ms p99; the more accurate GRU is excluded at 60.2 ms | measured on this hardware; the ratio transfers, not the absolute ms |
+
+![architecture x volume interaction](reports/volume_interaction.png)
+
+The crossing is the point. At 40 episodes the Transformer leads by 0.390 AP;
+at 200 the GRU leads by 0.043. Neither architecture is "better" without
+naming the training volume — and the GRU's 40-episode score (0.1098 against a
+0.0853 base rate, AUC 0.5146) is essentially non-predictive, so this is not
+two models improving at different rates but one that does not function at low
+volume.
+
+**And none of that decides what ships.** The Transformer is the production
+predictor because it clears the 3 ms end-to-end decision budget at 2.12 ms
+p99; the more accurate GRU is excluded at 60.2 ms on CPU and 3.22 ms on GPU.
+Deployability is a gate applied before accuracy, not a metric traded against
+it.
+
+What the project does **not** claim — that the Transformer is the most
+accurate architecture, that the GRU is inferior, that more data intrinsically
+helps, or that the interaction is significant — is kept in a frozen register:
+[`reports/claims.md`](reports/claims.md).
+
 ```bash
 pip install -e ".[ml,viz,demo]"
 make demo         # live dashboard in a browser — offline, one command

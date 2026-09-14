@@ -5,6 +5,8 @@ seeds (900000–900039) that no arm trains on. Base rate **0.0852822** for every
 arm — that identity is what makes these five numbers one measurement. Student
 path only; the teacher sees privileged state and is not deployable._
 
+![volume interaction](volume_interaction.png)
+
 ## Common held-out scores
 
 | architecture | volume | AP | AUC |
