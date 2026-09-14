@@ -472,6 +472,71 @@ def _render_gauges(m: dict[str, float]) -> None:
     )
 
 
+#: Panel colours for the A/B chips. Distinct in hue *and* lightness, so the
+#: two panels stay tellable apart in greyscale and for red-green colour
+#: blindness -- the waterfall already spends red on intercepts.
+C_ARM_A = "#7c5cff"
+C_ARM_B = "#00c2a8"
+
+#: Below this many found emitters, a lead is one lucky intercept rather than a
+#: better policy, and the verdict says so instead of naming a winner.
+VERDICT_MIN_FOUND = 3
+
+
+def _verdict(a: dict[str, float], b: dict[str, float],
+             label_a: str, label_b: str) -> tuple[str, str]:
+    """One sentence on who is ahead and on what, or that it is too early.
+
+    The mission metric is distinct emitters ever found, so that is what
+    decides the verdict -- not interception ratio, which a policy can raise by
+    parking on emitters it has already found while missing the rest of the
+    band. Getting that precedence backwards is the exact failure this project
+    measured: on HARD, ``predictor`` posts the second-best interception ratio
+    in the table and the worst hard-target record in it.
+
+    Returns:
+        ``(severity, sentence)`` where severity is a Streamlit status kind.
+    """
+    found_a, found_b = int(a["found"]), int(b["found"])
+    best = max(found_a, found_b)
+    if best < VERDICT_MIN_FOUND:
+        return "info", (
+            f"Too early to call — {best} emitter(s) found so far. A lead this "
+            "small is one lucky intercept, not a better policy."
+        )
+    if found_a == found_b:
+        # Tied on the mission metric: fall back to speed, which is the PS's
+        # other named objective, and say plainly that it is the tiebreak.
+        ta, tb = a["ttfi_s"], b["ttfi_s"]
+        if np.isnan(ta) or np.isnan(tb) or abs(ta - tb) < 1e-6:
+            return "info", (
+                f"Level — both have found {found_a} of {int(a['total'])} "
+                "emitters, and neither is meaningfully faster."
+            )
+        lead, lag, dt = ((label_a, label_b, tb - ta) if ta < tb
+                         else (label_b, label_a, ta - tb))
+        return "info", (
+            f"Level on emitters found ({found_a} each). **{lead}** got there "
+            f"{dt:.2f} s sooner than {lag}."
+        )
+    lead, lag, hi, lo = ((label_a, label_b, found_a, found_b) if found_a > found_b
+                         else (label_b, label_a, found_b, found_a))
+    return "success", (
+        f"**{lead}** is ahead: {hi} distinct emitters found against {lo} for "
+        f"{lag}. That is the mission metric — a scheduler is judged on what it "
+        "ever finds, not on how much it collects from what it already has."
+    )
+
+
+def _arm_chip(letter: str, label: str, colour: str) -> str:
+    """A coloured A/B badge, so a panel and its numbers are unambiguous."""
+    return (
+        f'<span style="display:inline-block;background:{colour};color:#fff;'
+        f'font-weight:700;border-radius:4px;padding:1px 7px;margin-right:6px;">'
+        f'{letter}</span><span style="font-weight:600;">{label}</span>'
+    )
+
+
 def _render_reasoning(track: Track, cfg: Config) -> None:
     """Bottom panel: the top channels by belief, and why this one was chosen."""
     belief = track.belief
@@ -616,6 +681,24 @@ def main() -> None:
         </div>""",
         unsafe_allow_html=True,
     )
+    with st.expander("What am I looking at?", expanded=False):
+        st.markdown(
+            "Each row of the waterfall is one **channel**; time runs left to "
+            "right. The receiver can only listen to a narrow slice at once — "
+            "the blue band — so everything outside it is *unknown*, not empty."
+            "\n\n"
+            "**Dark red** marks a transmission that went out while the receiver "
+            "was looking elsewhere: a miss. **Bright red** is an intercept. The "
+            "question the demo asks is not how much red a policy collects, but "
+            "how many *distinct emitters* it ever reaches — which is why a "
+            "policy can lead on interception ratio and still lose."
+            "\n\n"
+            "Both panels run the **same scenario, the same seed and the same "
+            "detection outcomes**, so any difference is the scheduling policy "
+            "rather than luck. Press **Inject pop-up** to add a threat "
+            "mid-episode and watch which policy notices."
+        )
+
     lead = tracks[chosen[0]]
     progress = lead.t / max(episode.n_slots, 1)
     st.progress(min(progress, 1.0), text=f"t = {lead.t * cfg.time.dt_s:.2f} s  /  {cfg.time.episode_s:.0f} s")
@@ -635,14 +718,30 @@ def main() -> None:
         with col_metrics:
             if len(chosen) == 2:
                 # Two identical stacks of numbers, far from their charts: without
-                # this the right-hand column is unattributable at a glance.
-                st.caption(f"**{'AB'[i]}** · {AGENT_LABELS.get(key, key)}")
+                # this the right-hand column is unattributable at a glance. The
+                # chip is coloured so the pairing survives a glance rather than
+                # a read.
+                st.markdown(
+                    _arm_chip("AB"[i], AGENT_LABELS.get(key, key),
+                              (C_ARM_A, C_ARM_B)[i]),
+                    unsafe_allow_html=True)
             _render_gauges(_metrics(track, cfg, episode, pd_tensor))
 
     if len(chosen) == 2:
         a, b = (_metrics(tracks[k], cfg, episode, pd_tensor) for k in chosen)
         st.divider()
+        # The verdict goes first. A viewer who reads nothing else should still
+        # leave knowing which policy is ahead and on which measure.
+        kind, sentence = _verdict(
+            a, b,
+            AGENT_LABELS.get(chosen[0], chosen[0]),
+            AGENT_LABELS.get(chosen[1], chosen[1]))
+        (st.success if kind == "success" else st.info)(sentence)
         st.markdown("#### Running delta — same scenario, same seed, same detection luck")
+        st.caption(
+            f"Deltas are **B ({AGENT_LABELS.get(chosen[1], chosen[1])})** "
+            f"relative to **A ({AGENT_LABELS.get(chosen[0], chosen[0])})**. "
+            "Green is B ahead.")
         cols = st.columns(4)
         cols[0].metric("Emitters found", f"{int(b['found'])} vs {int(a['found'])}",
                        delta=int(b["found"] - a["found"]))

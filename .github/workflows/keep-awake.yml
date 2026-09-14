@@ -42,7 +42,15 @@ jobs:
         run: |
           if [ -z "$APP_URL" ]; then
             echo "STREAMLIT_APP_URL is not set; nothing to ping."
-            echo "Set it under Settings > Secrets and variables > Actions > Variables."
+            # A green run is otherwise indistinguishable from a real ping, so
+            # say which one happened where the run page shows it.
+            {
+              echo "### Demo NOT pinged"
+              echo ""
+              echo "\`STREAMLIT_APP_URL\` is not set, so this job did nothing."
+              echo "The demo will still sleep. Set the variable under"
+              echo "**Settings > Secrets and variables > Actions > Variables**."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -55,6 +63,7 @@ jobs:
             echo "attempt $attempt -> HTTP $code"
             if [ "$code" = "200" ]; then
               echo "Demo is awake."
+              echo "### Demo pinged and awake (HTTP 200 on attempt $attempt)"                 >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             sleep 20
