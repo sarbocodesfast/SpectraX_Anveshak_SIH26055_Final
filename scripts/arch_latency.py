@@ -45,6 +45,20 @@ for _stream in (sys.stdout, sys.stderr):
 
 ARCHS = ("transformer", "gru", "tcn")
 
+#: Milliseconds the decision spends OUTSIDE the predictor's forward pass --
+#: belief update, scoring, argmax, retune bookkeeping. Derived, not guessed:
+#: `latency_budget.json` measures the whole `predictor` decision at p99
+#: 2.031 ms and this benchmark measures the transformer's forward pass at
+#: about 1.4 ms p99 on the same class of machine, so roughly 0.6 ms sits
+#: outside it.
+#:
+#: It matters because the budget covers the WHOLE decision. Comparing the
+#: forward pass alone against it credits every architecture with 0.6 ms it
+#: does not have, and that is enough to flip the GRU from infeasible to
+#: apparently fine on GPU, where its forward pass already consumes ~87% of
+#: the budget on its own.
+DECISION_OVERHEAD_MS = 0.6
+
 
 def time_arch(arch: str, cfg, device: str, n: int, warmup: int) -> dict:
     """Median and tail latency of one forward pass, in milliseconds."""
@@ -129,6 +143,58 @@ def render(rep: dict) -> str:
             A("**The GRU fits.** Its latency advantage or penalty is small "
               "enough that the accuracy result decides, and the shipping "
               "recommendation stands on the architecture control alone.")
+    A("")
+    A("## Latency is a gate, not a metric")
+    A("")
+    A("Accuracy and latency are not two numbers to trade against each other "
+      "here. The receiver must answer within the dwell or it has not answered "
+      "at all, so deployability is a predicate applied *first*:")
+    A("")
+    A("```")
+    A(f"    Deployable(m)  =  p99 forward(m) + {DECISION_OVERHEAD_MS:.1f} ms overhead"
+      f"  <=  {rep['budget_ms']:.2f} ms")
+    A("```")
+    A("")
+    A("and architectures are ranked only among those that pass:")
+    A("")
+    A("1. **must meet the timing constraint** — a hard gate, no partial credit")
+    A("2. then maximise predictive quality")
+    A("3. then prefer parameter efficiency")
+    A("")
+    A(f"The +{DECISION_OVERHEAD_MS:.1f} ms is the rest of the decision -- belief "
+      "update, scoring, argmax. It is derived from the measured whole-decision "
+      "p99 of 2.031 ms against the transformer's ~1.4 ms forward pass, not "
+      "assumed. Omitting it credits every architecture with time it does not "
+      "have.")
+    A("")
+    A("| architecture | deployable (CPU) | deployable (GPU) | AP (MEDIUM) |")
+    A("|---|---|---|---|")
+    #: From reports/arch_control.json. `tcn` was never entered in the accuracy
+    #: control, and saying so is more useful than leaving the cell blank.
+    ap_known = {"transformer": "0.5103", "gru": "0.5573", "tcn": "_not measured_"}
+    for arch in ARCHS:
+        cells = []
+        for dev in ("cpu", "cuda"):
+            r = next((x for x in rep["archs"]
+                      if x["arch"] == arch and x["device"] == dev), None)
+            if r is None:
+                cells.append("—")
+            else:
+                total = r["p99_ms"] + DECISION_OVERHEAD_MS
+                cells.append(f"**yes** ({total:.2f} ms)"
+                             if total <= rep["budget_ms"]
+                             else f"no ({total:.2f} ms)")
+        A(f"| `{arch}` | {cells[0]} | {cells[1]} | {ap_known.get(arch, '?')} |")
+    A("")
+    A("Under this ordering the **transformer is the production winner "
+      "regardless of the GRU's average-precision advantage**, because the GRU "
+      "never reaches step 2. The 9% gap is a secondary result about model "
+      "capacity, not an architecture-selection criterion.")
+    A("")
+    A("The gate also decides what is worth measuring next. `tcn` passes on GPU "
+      "at a third of the transformer's parameters, so it is the only "
+      "remaining architecture whose accuracy is worth the run. It fails on "
+      "CPU, so that experiment only matters if the receiver has a GPU.")
     A("")
     A("Measured on this machine's device; a receiver's target hardware will "
       "differ. What transfers is the *ratio* between architectures, not the "

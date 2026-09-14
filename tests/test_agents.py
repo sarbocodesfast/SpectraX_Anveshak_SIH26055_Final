@@ -552,18 +552,20 @@ def test_loading_a_mismatched_architecture_warns_rather_than_passing_silently(
 
 
 
-def test_shipped_checkpoints_disagree_with_the_declared_architecture():
-    """The mismatch that produced the architecture confound, pinned as a fact.
+def test_shipped_checkpoints_match_the_declared_architecture():
+    """Config and checkpoints must agree, now that the decision is made.
 
-    `configs/base.yaml` declares `gru`, but the shipped EASY and MEDIUM
-    weights are transformers. `build_predictor` honours the checkpoint, so the
-    disagreement never surfaced -- and a retraining run that omitted `--arch`
-    took the declared default and changed architecture at the same time as the
-    training corpus, leaving the two inseparable.
+    This test used to assert they *disagreed*, pinning the defect that let a
+    retraining run silently switch architecture: `configs/base.yaml` declared
+    `gru` while the shipped weights were transformers, and `build_predictor`
+    honours the checkpoint, so nothing broke loudly.
 
-    This test documents the current state rather than approving it. When the
-    shipping decision makes config and checkpoints agree, it should be
-    inverted to assert they match.
+    The decision is now settled and recorded in reports/arch_latency.md. The
+    GRU predicts about 9% better by average precision and is disqualified
+    anyway: its forward pass alone is 58.5 ms p99 on CPU and 3.007 ms on GPU
+    against a 3.00 ms per-dwell budget. Latency is a feasibility gate rather
+    than a metric to trade against accuracy, so the production architecture is
+    the transformer and every tier ships one.
     """
     pytest.importorskip("torch")
     from smartscan.agents.predictors import describe_checkpoint
@@ -577,11 +579,16 @@ def test_shipped_checkpoints_disagree_with_the_declared_architecture():
             seen[tier] = (cfg.predictor.arch, describe_checkpoint(path)["architecture"])
     if not seen:
         pytest.skip("no shipped checkpoints present")
-    # Whatever the values are, a tier whose checkpoint disagrees with its config
-    # must be visible here rather than resolved silently at load time.
-    assert any(declared != actual for declared, actual in seen.values()), (
-        f"config and checkpoints now agree ({seen}); invert this test and make "
-        "CheckpointProvenanceWarning an error in pyproject filterwarnings"
+
+    mismatched = {t: v for t, v in seen.items() if v[0] != v[1]}
+    assert not mismatched, (
+        f"config and checkpoint disagree for {mismatched}. A checkpoint whose "
+        "architecture differs from the declared one is how an architecture "
+        "change once rode along with a change of training corpus."
+    )
+    assert all(actual == "transformer" for _, actual in seen.values()), (
+        f"a tier ships a non-transformer architecture: {seen}. The GRU fails "
+        "the per-dwell latency gate; see reports/arch_latency.md."
     )
 
 

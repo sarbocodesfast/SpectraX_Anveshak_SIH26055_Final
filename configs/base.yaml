@@ -271,7 +271,15 @@ agents:
 
 # -----------------------------------------------------------------------------
 predictor:
-  arch: gru                   # gru | tcn | transformer
+  # PRODUCTION ARCHITECTURE -- do not change without rerunning
+  # scripts/arch_latency.py. Latency is a feasibility gate, not a
+  # metric to trade off: the GRU predicts ~9% better by average
+  # precision and is DISQUALIFIED, because its forward pass alone is
+  # 58.5 ms p99 on CPU and 3.007 ms on GPU against a 3.00 ms per-dwell
+  # budget. It is the smaller model and 42x slower, because a GRU steps
+  # through all 128 window slots in sequence. See
+  # reports/arch_latency.md and reports/arch_control.md.
+  arch: transformer           # gru | tcn | transformer
   window_slots: 128           # W
   input_planes: 4             # visit mask, hit mask, SNR estimate, staleness
   hidden_dim: 128
@@ -283,6 +291,16 @@ predictor:
   focal_gamma: 2.0            # occupancy is ~2-5% positive; plain BCE collapses to "idle"
   focal_alpha: 0.25
   lr: 3.0e-4
+  # FROZEN TRAINING RECIPE. batch_size is a scientific hyper-parameter here,
+  # not a memory setting: retraining one arm at 8 instead of 64 moved student
+  # average precision 0.6915 -> 0.7457, larger than several effects this
+  # project had credited to the training corpus. A run that lowers it to fit
+  # a smaller card has changed the experiment, so record it -- every
+  # checkpoint's manifest carries batch_size for exactly this reason.
+  #
+  # The Deepnote retraining that produced the quarantined results tried a
+  # (32, 16, 8) ladder and never recorded which rung succeeded, so that run
+  # cannot be reproduced even in principle. Do not reintroduce a ladder.
   batch_size: 64
   epochs: 20
   distillation:

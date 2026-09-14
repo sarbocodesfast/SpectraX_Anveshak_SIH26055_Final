@@ -51,14 +51,16 @@ for _stream in (sys.stdout, sys.stderr):
 CANONICAL = "runs/checkpoints/"
 
 KNOWN_DUPLICATES: dict[str, str] = {
-    "3362cbee58cb":
-        "predictor_hard.pt and predictor_hard_fullcorpus.pt. HARD's shipped "
-        "transformer was replaced in place by the full-corpus GRU, and the "
-        "evaluation that followed compared the file against itself for +0.0% "
-        "on every metric. The original transformer is preserved as "
-        "predictor_hard_shipped.pt, so nothing is lost; which of the two ships "
-        "is the open question the corpus x architecture control has to settle. "
-        "Remove this entry once it is settled.",
+    # Empty, and that is the point. The one entry here covered
+    # predictor_hard.pt and predictor_hard_fullcorpus.pt being the same GRU
+    # after the shipped transformer was replaced in place -- the pair that
+    # produced a +0.0% "null result" from a model compared against itself.
+    #
+    # It is resolved rather than excused: HARD has been restored from the
+    # preserved transformer, so all three tiers now ship the production
+    # architecture and the two files differ. The redundant
+    # predictor_hard_shipped.pt was removed once predictor_hard.pt held those
+    # same bytes again.
 }
 
 

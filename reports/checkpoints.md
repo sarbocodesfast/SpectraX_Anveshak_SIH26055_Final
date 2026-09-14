@@ -15,9 +15,8 @@ from their names._
 | `out/predictor_medium_20260202.pt` | transformer | _unrecorded_ | 1.31 | `bdccbb2229b3` |
 | `runs/checkpoints/predictor_easy.pt` | transformer | _unrecorded_ | 1.31 | `f9c74406bc64` |
 | `runs/checkpoints/predictor_easy_fullcorpus.pt` | gru | _unrecorded_ | 0.93 | `897fe6ce810f` |
-| `runs/checkpoints/predictor_hard.pt` | gru | _unrecorded_ | 0.93 | `3362cbee58cb` |
+| `runs/checkpoints/predictor_hard.pt` | transformer | _unrecorded_ | 1.31 | `47693e379794` |
 | `runs/checkpoints/predictor_hard_fullcorpus.pt` | gru | _unrecorded_ | 0.93 | `3362cbee58cb` |
-| `runs/checkpoints/predictor_hard_shipped.pt` | transformer | _unrecorded_ | 1.31 | `47693e379794` |
 | `runs/checkpoints/predictor_medium.pt` | transformer | _unrecorded_ | 1.31 | `4cf1ddd4fa02` |
 | `runs/checkpoints/predictor_medium_fullcorpus.pt` | gru | _unrecorded_ | 0.93 | `7ef08b33bba9` |
 
@@ -28,8 +27,7 @@ models compares a model against itself. That returns exactly `+0.0%`,
 which is indistinguishable from a real null result unless the hashes
 are checked.
 
-- `3362cbee58cb` -- `runs/checkpoints/predictor_hard.pt`, `runs/checkpoints/predictor_hard_fullcorpus.pt`
-- `47693e379794` -- `build/models/predictor_hard.pt`, `out/predictor_hard_default.pt`, `runs/checkpoints/predictor_hard_shipped.pt`
+- `47693e379794` -- `build/models/predictor_hard.pt`, `out/predictor_hard_default.pt`, `runs/checkpoints/predictor_hard.pt`
 - `4cf1ddd4fa02` -- `build/models/predictor_medium.pt`, `out/checkpoints/predictor_medium.pt`, `runs/checkpoints/predictor_medium.pt`
 - `f9c74406bc64` -- `build/models/predictor_easy.pt`, `out/predictor_easy_default.pt`, `runs/checkpoints/predictor_easy.pt`
 
@@ -46,7 +44,7 @@ rule the test suite enforces -- not a description of it.
 - `out/predictor_medium_20260101.pt` vs `out/predictor_medium_20260202.pt`: **blocked** -- one or both checkpoints predate the training manifest
 - `out/predictor_medium_20260101.pt` vs `runs/checkpoints/predictor_medium_fullcorpus.pt`: **blocked** -- architecture: 'transformer' vs 'gru'
 - `out/predictor_medium_20260202.pt` vs `runs/checkpoints/predictor_medium_fullcorpus.pt`: **blocked** -- architecture: 'transformer' vs 'gru'
-- `build/models/predictor_hard.pt` vs `runs/checkpoints/predictor_hard.pt`: **blocked** -- architecture: 'transformer' vs 'gru'
+- `build/models/predictor_hard.pt` vs `runs/checkpoints/predictor_hard_fullcorpus.pt`: **blocked** -- architecture: 'transformer' vs 'gru'
 
 ## More than one architecture is present
 
