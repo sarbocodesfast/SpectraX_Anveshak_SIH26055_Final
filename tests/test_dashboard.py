@@ -215,3 +215,47 @@ def test_presets_only_reference_real_schedulers_and_tiers():
             assert preset[side] in app.AGENT_LABELS, f"{name}: {preset[side]}"
         assert preset["a"] != preset["b"], f"{name} compares a policy to itself"
         assert preset.get("note"), f"{name} has no explanation of what it shows"
+
+
+def test_offered_agents_are_all_buildable():
+    """The UI must not offer a scheduler `build_agent` cannot construct.
+
+    This reproduces a production crash. The dashboard listed a key the
+    registry did not have, and the app died inside `build_agent` with a
+    KeyError that Streamlit Cloud redacts -- the viewer saw a dead page and no
+    reason. `AGENT_LABELS` is now derived by intersecting the label table with
+    the live registry, so the two cannot drift; this asserts that property
+    rather than the coincidence that they currently match.
+    """
+    from smartscan.agents import AGENT_KEYS
+
+    unbuildable = sorted(set(app.AGENT_LABELS) - set(AGENT_KEYS))
+    assert not unbuildable, (
+        f"UI offers schedulers that cannot be built: {unbuildable}. "
+        "AGENT_LABELS must be derived from AGENT_KEYS, not maintained by hand."
+    )
+
+
+def test_stale_widget_state_is_discarded_not_crashed_on():
+    """A session that survives a redeploy must not poison the next render.
+
+    Streamlit keeps browser session state across deployments, so a session
+    opened before an agent was renamed comes back naming one that no longer
+    resolves. Clearing it lets the widget fall back to its default, which is
+    what a returning viewer expects; keeping it crashed the app.
+    """
+    import streamlit as st
+
+    st.session_state["agent_a"] = "an_agent_that_was_removed"
+    st.session_state["agent_b"] = "whittle"
+    st.session_state["preset"] = "a preset that no longer exists"
+    st.session_state["tracks"] = {"an_agent_that_was_removed": object()}
+    st.session_state["_sig"] = ("stale",)
+
+    app._drop_stale_state()
+
+    assert "agent_a" not in st.session_state, "stale agent key was kept"
+    assert st.session_state["agent_b"] == "whittle", "valid key was discarded"
+    assert "preset" not in st.session_state, "stale preset was kept"
+    assert "tracks" not in st.session_state, "tracks for a dead agent were kept"
+    assert "_sig" not in st.session_state, "signature outlived its tracks"

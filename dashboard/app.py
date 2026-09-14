@@ -45,7 +45,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from smartscan.agents import build_agent  # noqa: E402
+from smartscan.agents import AGENT_KEYS, build_agent  # noqa: E402
 from smartscan.agents.belief import BeliefState  # noqa: E402
 from smartscan.config import Config, load_config  # noqa: E402
 from smartscan.env.receiver import Receiver  # noqa: E402
@@ -62,7 +62,7 @@ C_HIT = "#ff3b30"        # confirmed intercept
 C_MISS = "#8b1a14"       # transmitted while we looked elsewhere
 C_POPUP = "#ffd60a"      # pop-up threat
 
-AGENT_LABELS: dict[str, str] = {
+_ALL_LABELS: dict[str, str] = {
     "sequential": "Sequential sweep (incumbent)",
     "random": "Random tuning",
     "priority_rr": "Priority round-robin (briefing 40% wrong)",
@@ -95,6 +95,17 @@ AGENT_LABELS: dict[str, str] = {
     "dqn": "Double-DQN (duelling, masked)",
     "ppo": "PPO (from scratch)",
     "hybrid": "Hybrid: predictor + PPO",
+}
+
+#: What the UI is allowed to offer: the labelled set intersected with the
+#: schedulers actually registered in this process, in registry order.
+#:
+#: Deriving it rather than hard-coding it is the fix for a production crash.
+#: The dashboard offered a key that `build_agent` did not have, and the app
+#: died with a redacted KeyError in front of whoever was looking. A label list
+#: maintained by hand can drift from the registry; an intersection cannot.
+AGENT_LABELS: dict[str, str] = {
+    k: _ALL_LABELS[k] for k in AGENT_KEYS if k in _ALL_LABELS
 }
 
 
@@ -636,10 +647,36 @@ def _render_reasoning(track: Track, cfg: Config) -> None:
 # --------------------------------------------------------------------------- #
 # App
 # --------------------------------------------------------------------------- #
+def _drop_stale_state() -> None:
+    """Discard widget state that names a scheduler this build cannot build.
+
+    Streamlit keeps a browser session's state across a redeploy, so a session
+    opened before an agent was renamed or removed comes back holding a key
+    that no longer resolves. The app then crashed inside `build_agent` with a
+    KeyError, which Streamlit Cloud redacts -- the visible result is a dead
+    app and no reason.
+
+    Clearing the offending keys lets the widgets fall back to their defaults,
+    which is the behaviour a returning viewer expects anyway.
+    """
+    for key in ("agent_a", "agent_b"):
+        if key in st.session_state and st.session_state[key] not in AGENT_LABELS:
+            del st.session_state[key]
+    if st.session_state.get("preset") not in PRESETS:
+        st.session_state.pop("preset", None)
+    # Tracks are keyed by agent; one built for a now-unknown agent is unusable
+    # and would fail the same way on the next redraw.
+    tracks = st.session_state.get("tracks")
+    if isinstance(tracks, dict) and any(k not in AGENT_LABELS for k in tracks):
+        st.session_state.pop("tracks", None)
+        st.session_state.pop("_sig", None)
+
+
 def main() -> None:
     """Entry point for ``streamlit run dashboard/app.py``."""
     st.set_page_config(page_title="ANVESHAK — EW receiver scheduler",
                        layout="wide", initial_sidebar_state="expanded")
+    _drop_stale_state()
 
     st.markdown(
         """
@@ -726,7 +763,18 @@ def main() -> None:
         # while `tracks` keeps its stale value, so every later rerun sees a
         # matching signature, skips the rebuild, and raises KeyError on an agent
         # that was never built.
-        built = {k: _new_track(k, cfg, scenario, episode, int(seed)) for k in chosen}
+        try:
+            built = {k: _new_track(k, cfg, scenario, episode, int(seed))
+                     for k in chosen}
+        except KeyError as exc:
+            # Never let an unknown agent take the whole app down. Streamlit
+            # Cloud redacts the exception, so the viewer would otherwise see a
+            # dead page with no cause.
+            st.error(f"Scheduler {exc} is not available in this build. "
+                     "Pick another from the sidebar.")
+            st.session_state.pop("tracks", None)
+            st.session_state.pop("_sig", None)
+            st.stop()
         st.session_state["tracks"] = built
         st.session_state["_sig"] = signature
         st.session_state["running"] = False
