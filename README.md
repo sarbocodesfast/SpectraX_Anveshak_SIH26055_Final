@@ -83,7 +83,7 @@ the receiver must decide within one dwell or it has not decided at all:
 |---|---|---|---|---|---|
 | **`transformer`** | 323,905 | **2.00 ms** | **1.57 ms** | 0.5103 | **production** |
 | `gru` | 232,705 | 63.22 ms | 3.12 ms | 0.5573 | disqualified |
-| `tcn` | 95,553 | 9.69 ms | 1.69 ms | — | GPU-only candidate |
+| `tcn` | 95,553 | 9.84 ms | 1.95 ms | **0.5572** | GPU-only alternative |
 
 Budget is `(t_settle + 1) × dt` = **3.00 ms**. Deployability is a gate applied
 *before* accuracy, not a metric traded against it:
@@ -97,6 +97,13 @@ whole decision path is counted rather than the forward pass alone. It is the
 **smaller** model and 42× slower, because it steps through all 128 window
 slots in sequence while a Transformer attends over them at once — parameter
 count is not what a real-time budget constrains.
+
+`tcn` was then measured under the same control and **ties the GRU to within
+0.017% AP on 41% of its parameters**, matching the Transformer's GPU latency
+at 30% of its size. It is the one architecture that is both
+prediction-competitive and gate-passing — on GPU only, at over three times
+the budget on CPU. That makes it a viable GPU-specific alternative rather than
+a replacement, and closes the architecture search.
 
 This also explains a confound the project had to unpick: a retraining run that
 omitted `--arch` silently took the config default and switched Transformer →

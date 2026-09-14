@@ -108,7 +108,40 @@ declare **`transformer`**, matching the shipped EASY and MEDIUM weights. The
 GRU default is what a retraining run silently picked up, and it was never a
 deployable choice.
 
-### The lead worth following
+### The TCN check: run, and closed
+
+The lead was followed, once, under the stop rule. Same 200 episodes, same
+held-out set (base rate 0.085967 again), same seed, batch and epochs — only
+`--arch` moved.
+
+| architecture | AP | AUC | best val AP | params | gate (CPU) | gate (GPU) |
+|---|---|---|---|---|---|---|
+| `transformer` | 0.5103 | 0.7616 | 0.0629 | 323,905 | **pass** 2.05 ms | **pass** 1.94 ms |
+| `gru` | 0.5573 | 0.7882 | 0.3222 | 232,705 | fail 60.51 ms | fail 3.20 ms |
+| `tcn` | **0.5572** | **0.7883** | 0.3266 | **95,553** | fail 9.84 ms | **pass** 1.95 ms |
+
+**TCN ties the GRU to within 0.017% AP on 41% of its parameters**, and beats
+the transformer by **+9.19%**. It is the only architecture that is both
+prediction-competitive and gate-passing — but only on GPU, where it matches
+the transformer's latency (1.95 ms against 1.94 ms) at 30% of the parameters.
+
+Under the stop rule that is a **viable GPU-specific alternative and nothing
+broader**. It is 9.84 ms on CPU, over three times the budget, so it cannot
+replace the production transformer unless the deployment assumption changes
+to GPU-only hardware. The architecture question is closed either way: no
+further architecture is worth a run.
+
+**The honest caveat.** Every arm shares one learning rate and schedule, which
+is what makes it a controlled comparison — but transformers are the
+architecture most sensitive to warmup and schedule, and this one's *validation*
+AP is five times worse than the other two (0.063 against 0.327 and 0.322) while
+its final score is only 9% worse. That gap is large enough that the
+transformer may be undertrained under a shared recipe rather than genuinely
+weaker. It does not change the shipping decision, because the transformer
+wins on the gate regardless, but it does mean "the transformer predicts
+worse" is a claim about *this recipe*, not about the architecture.
+
+### The earlier lead, for the record
 
 `tcn` is the fastest architecture measured on GPU and the cheapest by far in
 parameters — 95,553, under a third of the transformer — at p99 0.849 ms

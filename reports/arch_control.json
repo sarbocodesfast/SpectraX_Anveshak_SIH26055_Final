@@ -32,5 +32,25 @@
       "arch_recorded": "gru",
       "torch": "2.5.1+cu121"
     }
+  },
+  "run3_tcn_check": {
+    "medium-transformer": {
+      "ap": 0.5102898896819686,
+      "auc": 0.7616120083947315,
+      "base": 0.085966796875,
+      "minutes": 3.1,
+      "arch_recorded": "transformer",
+      "torch": "2.5.1+cu121",
+      "best_val_ap": 0.06294
+    },
+    "medium-tcn": {
+      "ap": 0.5571710592763978,
+      "auc": 0.7882559644424406,
+      "base": 0.085966796875,
+      "minutes": 12.0,
+      "arch_recorded": "tcn",
+      "torch": "2.5.1+cu121",
+      "best_val_ap": 0.3266
+    }
   }
 }

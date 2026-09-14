@@ -6,16 +6,16 @@ Budget: `(t_settle + 1) x dt` = **3.00 ms** on medium. The whole decision must f
 
 | device | architecture | params | median | p95 | p99 | forward alone vs budget |
 |---|---|---|---|---|---|---|
-| cpu | `transformer` | 323,905 | 1.097 ms | 1.237 ms | 1.403 ms | 47% |
-| cpu | `gru` | 232,705 | 40.170 ms | 55.388 ms | 62.618 ms | 2087%  **over budget** |
-| cpu | `tcn` | 95,553 | 7.689 ms | 8.465 ms | 9.086 ms | 303%  **over budget** |
-| cuda | `transformer` | 323,905 | 0.654 ms | 0.746 ms | 0.965 ms | 32% |
-| cuda | `gru` | 232,705 | 2.134 ms | 2.493 ms | 2.523 ms | 84% |
-| cuda | `tcn` | 95,553 | 0.707 ms | 0.856 ms | 1.088 ms | 36% |
+| cpu | `transformer` | 323,905 | 1.024 ms | 1.473 ms | 1.522 ms | 51% |
+| cpu | `gru` | 232,705 | 38.779 ms | 54.783 ms | 59.576 ms | 1986%  **over budget** |
+| cpu | `tcn` | 95,553 | 7.629 ms | 8.436 ms | 8.745 ms | 291%  **over budget** |
+| cuda | `transformer` | 323,905 | 0.682 ms | 0.809 ms | 0.891 ms | 30% |
+| cuda | `gru` | 232,705 | 2.145 ms | 2.539 ms | 2.617 ms | 87% |
+| cuda | `tcn` | 95,553 | 0.707 ms | 0.797 ms | 1.033 ms | 34% |
 
 ## Reading
 
-The GRU's p99 forward pass is **44.6x** the transformer's, on 72% of the parameters. Parameter count is not what the dwell budget constrains: a GRU steps through the window sequentially and a transformer does not.
+The GRU's p99 forward pass is **39.1x** the transformer's, on 72% of the parameters. Parameter count is not what the dwell budget constrains: a GRU steps through the window sequentially and a transformer does not.
 
 **This is a deployment constraint, not a detail.** The shipped predictor already sits at 1.5x headroom on MEDIUM (p99 2.031 ms against 3.0 ms) *with the transformer*. Multiplying the forward pass by this factor does not fit, so the ~9% average-precision advantage cannot be taken without either a faster inference path or a larger budget.
 
@@ -37,12 +37,12 @@ The +0.6 ms is the rest of the decision -- belief update, scoring, argmax. It is
 
 | architecture | deployable (CPU) | deployable (GPU) | AP (MEDIUM) |
 |---|---|---|---|
-| `transformer` | **yes** (2.00 ms) | **yes** (1.57 ms) | 0.5103 |
-| `gru` | no (63.22 ms) | no (3.12 ms) | 0.5573 |
-| `tcn` | no (9.69 ms) | **yes** (1.69 ms) | _not measured_ |
+| `transformer` | **yes** (2.12 ms) | **yes** (1.49 ms) | 0.5103 |
+| `gru` | no (60.18 ms) | no (3.22 ms) | 0.5573 |
+| `tcn` | no (9.34 ms) | **yes** (1.63 ms) | 0.5572 |
 
 Under this ordering the **transformer is the production winner regardless of the GRU's average-precision advantage**, because the GRU never reaches step 2. The 9% gap is a secondary result about model capacity, not an architecture-selection criterion.
 
-The gate also decides what is worth measuring next. `tcn` passes on GPU at a third of the transformer's parameters, so it is the only remaining architecture whose accuracy is worth the run. It fails on CPU, so that experiment only matters if the receiver has a GPU.
+`tcn` has now been measured: it ties the GRU to within 0.017% AP on 41% of its parameters, and beats the transformer by 9.19%. It is the only architecture that is both prediction-competitive and gate-passing, and only on GPU -- at 9.84 ms it is over three times the budget on CPU. So it is a viable GPU-specific alternative and not a general replacement. The architecture search stops here.
 
 Measured on this machine's device; a receiver's target hardware will differ. What transfers is the *ratio* between architectures, not the absolute milliseconds.

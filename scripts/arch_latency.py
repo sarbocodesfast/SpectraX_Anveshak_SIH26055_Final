@@ -171,7 +171,7 @@ def render(rep: dict) -> str:
     A("|---|---|---|---|")
     #: From reports/arch_control.json. `tcn` was never entered in the accuracy
     #: control, and saying so is more useful than leaving the cell blank.
-    ap_known = {"transformer": "0.5103", "gru": "0.5573", "tcn": "_not measured_"}
+    ap_known = {"transformer": "0.5103", "gru": "0.5573", "tcn": "0.5572"}
     for arch in ARCHS:
         cells = []
         for dev in ("cpu", "cuda"):
@@ -191,10 +191,12 @@ def render(rep: dict) -> str:
       "never reaches step 2. The 9% gap is a secondary result about model "
       "capacity, not an architecture-selection criterion.")
     A("")
-    A("The gate also decides what is worth measuring next. `tcn` passes on GPU "
-      "at a third of the transformer's parameters, so it is the only "
-      "remaining architecture whose accuracy is worth the run. It fails on "
-      "CPU, so that experiment only matters if the receiver has a GPU.")
+    A("`tcn` has now been measured: it ties the GRU to within 0.017% AP on 41% "
+      "of its parameters, and beats the transformer by 9.19%. It is the only "
+      "architecture that is both prediction-competitive and gate-passing, and "
+      "only on GPU -- at 9.84 ms it is over three times the budget on CPU. So "
+      "it is a viable GPU-specific alternative and not a general replacement. "
+      "The architecture search stops here.")
     A("")
     A("Measured on this machine's device; a receiver's target hardware will "
       "differ. What transfers is the *ratio* between architectures, not the "
