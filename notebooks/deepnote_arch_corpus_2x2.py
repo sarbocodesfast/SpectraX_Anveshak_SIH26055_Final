@@ -94,14 +94,31 @@ if not pathlib.Path(ARCHIVE).exists():
         "kagglehub.dataset_download('shirishrajgupta/"
         "ew-smart-scan-rf-environment')\"")
 
-sh(f"rm -rf {DS} && mkdir -p {DS} {OUT}")
-print("\nunpacking corpus to local disk...", flush=True)
-zipfile.ZipFile(ARCHIVE).extractall(DS)
-found = list(pathlib.Path(DS).rglob("index.parquet"))
-if not found:
-    raise SystemExit("no index.parquet -- the corpus did not unpack")
-DS_ROOT = found[0].parent
-print("corpus root: " + str(DS_ROOT), flush=True)
+def ensure_corpus(force=False):
+    """Unpack the corpus to local disk, and return its root.
+
+    Re-checked before every arm rather than once at the start. ``/root`` is
+    ephemeral: a first attempt at this control unpacked the corpus, trained
+    one arm for four minutes, and then died on ``FileNotFoundError`` because
+    the machine had been recycled underneath it and taken ``/root/ctlds``
+    with it. Re-unpacking costs a couple of minutes; losing the run costs the
+    whole experiment.
+    """
+    marker = list(pathlib.Path(DS).rglob("index.parquet")) if not force else []
+    if marker:
+        return marker[0].parent
+    sh(f"rm -rf {DS} && mkdir -p {DS} {OUT}")
+    print("\nunpacking corpus to local disk...", flush=True)
+    zipfile.ZipFile(ARCHIVE).extractall(DS)
+    found = list(pathlib.Path(DS).rglob("index.parquet"))
+    if not found:
+        raise SystemExit("no index.parquet -- the corpus did not unpack")
+    print("corpus root: " + str(found[0].parent), flush=True)
+    return found[0].parent
+
+
+sh(f"mkdir -p {DS} {OUT}")
+DS_ROOT = ensure_corpus()
 
 # ---- the four arms -----------------------------------------------------
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -113,9 +130,15 @@ for arch in ARCHS:
         print(f"{name}   batch={BATCH} episodes={EPISODES} wpe={WPE}")
         print("=" * 64, flush=True)
         if corpus == "dataset":
+            DS_ROOT = ensure_corpus()          # /root may have been recycled
             src = f"--dataset {DS_ROOT} --dataset-episodes {EPISODES} --windows-per-episode {WPE}"
         else:
             src = f"--episodes {EPISODES} --windows-per-episode {WPE}"
+        # The repo lives on ephemeral disk too, and a missing one fails every
+        # remaining arm rather than just this one.
+        if not pathlib.Path(REPO).is_dir():
+            sh(f"git clone -q {REPO_URL} {REPO}")
+            sh(f'python -m pip install -q -e "{REPO}[ml,viz]"')
         t = time.time()
         rc = sh(
             f"cd {REPO} && PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True "
