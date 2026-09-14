@@ -35,6 +35,7 @@ import json
 import os
 import pathlib
 import subprocess
+import sys
 import time
 
 T0 = time.time()
@@ -79,25 +80,48 @@ if torch.cuda.is_available():
     for i in range(torch.cuda.device_count()):
         print(f"  gpu{i}: {torch.cuda.get_device_name(i)}", flush=True)
 
-# Refuse to start on CPU. Kaggle handed out a Tesla P100 (sm_60) against a
-# preinstalled torch built for sm_70+, so `_pick_device` correctly fell back
-# to CPU -- and the run then took 64 minutes for an arm that needs 4, with the
-# GRU arm projected at 16.5 h against a 12 h limit. The fallback is right; the
-# silence about it is what wasted the afternoon.
-if not torch.cuda.is_available():
-    raise SystemExit("no CUDA device at all -- set the accelerator on this notebook")
-try:
-    (torch.zeros(8, 8, device="cuda") @ torch.zeros(8, 8, device="cuda")).cpu()
-except Exception as exc:
+# Make the GPU usable, or stop -- but do not train on CPU by accident.
+#
+# Kaggle keeps assigning a Tesla P100 regardless of the accelerator requested
+# through the API, and a P100 is compute capability sm_60 while the
+# preinstalled torch is built for sm_70 and above. `_pick_device` correctly
+# probes with a real kernel, sees it fail, and falls back to CPU -- which took
+# 64 minutes for an arm that needs 4, with the GRU arm heading for 16.5 h
+# against a 12 h limit.
+#
+# The fix is a torch build that includes sm_60. cu121 ships sm_50 through
+# sm_90, so it covers the P100 and the T4 both. Installing it costs a few
+# minutes and is recorded in the manifest; crucially BOTH arms then share one
+# build, so the comparison is unaffected.
+def _gpu_runs_kernels() -> tuple[bool, str]:
+    """Probe the GPU in a subprocess, so a bad build cannot poison this one."""
+    probe = (
+        "import torch;"
+        "torch.zeros(8,8,device='cuda') @ torch.zeros(8,8,device='cuda');"
+        "print('OK', torch.__version__, torch.cuda.get_device_name(0))"
+    )
+    r = subprocess.run([sys.executable, "-c", probe],
+                       capture_output=True, text=True)
+    return r.returncode == 0, (r.stdout or r.stderr).strip().splitlines()[-1][:160]
+
+
+ok, detail = _gpu_runs_kernels()
+print(f"GPU probe: {'OK' if ok else 'FAILED'} -- {detail}", flush=True)
+if not ok:
+    print()
+    print("Installing a torch build that supports this GPU (cu121 covers "
+          "sm_50-sm_90)...", flush=True)
+    sh("python -m pip install -q torch --index-url "
+       "https://download.pytorch.org/whl/cu121 2>&1 | tail -2", check=False)
+    ok, detail = _gpu_runs_kernels()
+    print(f"GPU probe after reinstall: {'OK' if ok else 'FAILED'} -- {detail}",
+          flush=True)
+if not ok:
     raise SystemExit(
-        f"the GPU cannot run kernels for this torch build: {exc}\n"
-        f"  device : {torch.cuda.get_device_name(0)}\n"
-        f"  torch  : {torch.__version__}\n"
-        "A P100 is sm_60 and the preinstalled torch supports sm_70 and above, "
-        "so training would silently fall back to CPU and take ~16x longer. "
-        "Set the accelerator to T4 x2 (sm_75) and rerun."
-    ) from exc
-print("GPU kernel launch OK", flush=True)
+        "still cannot launch a CUDA kernel: " + detail + "\n"
+        "Training would fall back to CPU and take ~16x longer, so stopping "
+        "here rather than burning hours. Set the accelerator to T4 x2."
+    )
 
 sh(f"rm -rf {REPO} && git clone -q {REPO_URL} {REPO}")
 sh(f"git -C {REPO} log --oneline -1")
