@@ -66,6 +66,7 @@ AGENT_LABELS: dict[str, str] = {
     "sequential": "Sequential sweep (incumbent)",
     "random": "Random tuning",
     "priority_rr": "Priority round-robin (briefing 40% wrong)",
+    "epsilon_greedy": "Epsilon-greedy",
     "ucb1": "UCB1 (discounted)",
     "thompson": "Thompson sampling",
     "whittle": "Whittle index (restless bandit)",
@@ -78,10 +79,19 @@ AGENT_LABELS: dict[str, str] = {
     # threat-weighted interception (+195 % over the tuned sweep at 30 seeds) --
     # though see the log-rank table in the README: on hard-class emitters it is
     # the WORST policy measured, missing 126 of 146.
-    "predictor": "Occupancy predictor (transformer)",
+    "predictor": "Occupancy predictor (learned)",
     "predictor_de": "Occupancy predictor (dwell-efficient)",
     "predictor_gc": "Occupancy predictor (guaranteed coverage)",
     "whittle_predictor": "Whittle + predictor (slot-split)",
+    # Scheduling over policies rather than within one. `phased` sweeps while
+    # sweeping is still discovering and then hands over, with the trigger
+    # driven by what the receiver observes -- channels that have ever detected
+    # -- rather than by a timer. `adaptive_phased` replaces that timer with a
+    # marginal-value comparison; it is kept because the reason it does not beat
+    # fixed patience is informative, not because it wins.
+    "phased": "Phased: sweep, then exploit",
+    "adaptive_phased": "Phased (adaptive hand-over) · diagnostic",
+    "predictor_sweep": "Predictor-refined sweep",
     "dqn": "Double-DQN (duelling, masked)",
     "ppo": "PPO (from scratch)",
     "hybrid": "Hybrid: predictor + PPO",
@@ -424,6 +434,71 @@ def _agent_option(key: str) -> str:
     return label
 
 
+#: One-click comparisons, each of which makes an argument this project
+#: actually measured. Nineteen schedulers behind two dropdowns is a menu, not
+#: a demonstration: a viewer with no prior context cannot know which pairing
+#: is worth looking at, and the interesting ones are not the obvious ones.
+PRESETS: dict[str, dict] = {
+    "Custom": {},
+    "1 · The sweep is hard to beat": {
+        "tier": "easy", "a": "sequential", "b": "whittle",
+        "note": "On EASY a tuned saw-tooth is near-optimal against static "
+                "emitters, and the learned policy does not beat it. Shown "
+                "first because a demo that only shows its own wins is not "
+                "evidence.",
+    },
+    "2 · Prediction parks, and loses emitters": {
+        "tier": "hard", "a": "coprime_sweep", "b": "predictor",
+        "note": "The predictor collects heavily from emitters it has already "
+                "found and stops going to look for the rest. Watch band "
+                "coverage against emitters found: it can lead on interception "
+                "ratio while missing more of the band.",
+    },
+    "3 · Coverage against exploitation": {
+        "tier": "hard", "a": "coprime_sweep", "b": "whittle",
+        "note": "Each wins the objective the other loses -- the sweep takes "
+                "intercept time, the bandit takes interception rate -- because "
+                "each runs the wrong policy for half the episode. That gap is "
+                "what the phased schedulers exist to close.",
+    },
+    "4 · Sweep, then exploit": {
+        "tier": "hard", "a": "whittle", "b": "phased",
+        "note": "`phased` sweeps while sweeping is still discovering, then "
+                "hands over. The hand-over is triggered by what the receiver "
+                "observes -- channels that have ever detected -- not by a "
+                "timer.",
+    },
+}
+
+
+def _apply_preset() -> None:
+    """Copy the chosen preset into the widget state, before the widgets draw.
+
+    Runs as an ``on_change`` callback so the assignment lands before the
+    rerun that redraws the controls. Setting these keys after the widgets are
+    instantiated would raise, and setting them without a rerun would show the
+    old selection for one frame.
+    """
+    preset = PRESETS.get(st.session_state.get("preset", "Custom")) or {}
+    if not preset:
+        return
+    st.session_state["tier"] = preset["tier"]
+    st.session_state["agent_a"] = preset["a"]
+    st.session_state["agent_b"] = preset["b"]
+    st.session_state["mode"] = "A/B comparison"
+
+
+def _to_custom() -> None:
+    """Drop back to Custom when a control is changed by hand.
+
+    Without this the sidebar would keep claiming a preset while showing a
+    pairing that is no longer that preset -- a label that lies quietly. Safe
+    against :func:`_apply_preset`, because assigning to session state from
+    code does not fire widget callbacks; only a human edit does.
+    """
+    st.session_state["preset"] = "Custom"
+
+
 def _render_gauges(m: dict[str, float]) -> None:
     """Draw the right-hand metric column."""
     st.metric(
@@ -581,7 +656,17 @@ def main() -> None:
         st.title("ANVESHAK")
         st.caption("Closed-loop ES receiver scheduling · SIH 26055")
 
-        tier = st.selectbox("Scenario tier", ["easy", "medium", "hard"], index=1)
+        st.selectbox(
+            "Demo preset", list(PRESETS), key="preset", on_change=_apply_preset,
+            help="Each preset loads a comparison this project measured. "
+                 "Changing any control below moves you to Custom.")
+        _preset = PRESETS.get(st.session_state.get("preset", "Custom")) or {}
+        if _preset.get("note"):
+            st.caption(_preset["note"])
+
+        st.divider()
+        tier = st.selectbox("Scenario tier", ["easy", "medium", "hard"],
+                            index=1, key="tier", on_change=_to_custom)
         default_n = {"easy": 5, "medium": 15, "hard": 30}[tier]
         n_emitters = st.slider("Emitters", 3, 40, default_n)
         seed = st.number_input("Seed", value=20260902, step=1)
@@ -592,14 +677,15 @@ def main() -> None:
                            help="Slots lost to LO settling on every frequency change.")
 
         st.divider()
-        mode = st.radio("Mode", ["A/B comparison", "Single scheduler"], index=0)
+        mode = st.radio("Mode", ["A/B comparison", "Single scheduler"],
+                        index=0, key="mode", on_change=_to_custom)
         if mode == "A/B comparison":
             left = st.selectbox("A", list(AGENT_LABELS),
-                                index=_agent_index("sequential"),
+                                index=_agent_index("sequential"), key="agent_a", on_change=_to_custom,
                                 format_func=_agent_option,
                                 help="The tuned sweep every number is measured against.")
             right = st.selectbox("B", list(AGENT_LABELS),
-                                 index=_agent_index("whittle"),
+                                 index=_agent_index("whittle"), key="agent_b", on_change=_to_custom,
                                  format_func=_agent_option,
                                  help="★ marks the two policies the 30-seed grid "
                                       "supports as the result.")

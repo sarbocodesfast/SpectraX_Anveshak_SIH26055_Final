@@ -185,3 +185,33 @@ def test_track_stops_cleanly_at_the_horizon(setup):
     n = len(track.actions)
     app._advance(track, cfg, 50, interferers=set())
     assert len(track.actions) == n, "advancing a finished track must be a no-op"
+
+
+def test_every_scheduler_is_reachable_from_the_demo():
+    """The UI's agent list must not drift from the repository's.
+
+    `phased`, `adaptive_phased` and `predictor_sweep` were added to the
+    package and never to the dashboard, so three schedulers -- including the
+    one the HARD analysis argues for -- could not be selected in the demo at
+    all. A preset referencing one of them would have raised at runtime in
+    front of whoever was watching.
+    """
+    from smartscan.agents import AGENT_KEYS
+
+    ui = set(app.AGENT_LABELS)
+    assert set(AGENT_KEYS) == ui, (
+        f"missing from UI: {sorted(set(AGENT_KEYS) - ui)}; "
+        f"in UI but not a real agent: {sorted(ui - set(AGENT_KEYS))}"
+    )
+
+
+def test_presets_only_reference_real_schedulers_and_tiers():
+    """A preset is a promise that one click produces a working comparison."""
+    for name, preset in app.PRESETS.items():
+        if not preset:
+            continue                      # "Custom" carries no selection
+        assert preset["tier"] in {"easy", "medium", "hard"}, name
+        for side in ("a", "b"):
+            assert preset[side] in app.AGENT_LABELS, f"{name}: {preset[side]}"
+        assert preset["a"] != preset["b"], f"{name} compares a policy to itself"
+        assert preset.get("note"), f"{name} has no explanation of what it shows"
