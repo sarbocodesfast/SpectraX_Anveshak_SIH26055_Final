@@ -68,14 +68,44 @@ Offline learning is here too, and benchmarked honestly: a distilled occupancy
 predictor (`predictor`), `dqn`, `ppo`, and a `hybrid`, trained for 198 K – 3 M
 environment steps each.
 
-> **On the predictor's architecture.** Earlier revisions of this file called it
-> a Transformer. The shipped EASY and MEDIUM weights are, but HARD's are a GRU,
-> and `configs/base.yaml` declares `gru` as the default regardless — so a
-> retraining run that omitted `--arch` silently changed architecture. Runtime
-> stayed correct, because the loader honours each checkpoint's own tag, but the
-> comparisons built on top of it did not. Which architecture ships is an open
-> decision pending a corpus × architecture control; the provenance machinery
-> that makes it answerable is under [Reproducibility](#reproducibility).
+### The predictor was selected by feasibility first, then accuracy
+
+The Transformer is **the selected deployable predictor under the 3 ms
+end-to-end decision constraint** — not "the best model". The distinction is
+the result.
+
+A controlled run with everything but architecture frozen found the **GRU more
+accurate, by ~9% average precision** (0.5573 against 0.5103, replicated across
+two epoch budgets on an identical held-out set). It is not what ships, because
+the receiver must decide within one dwell or it has not decided at all:
+
+| architecture | params | CPU p99 decision | GPU p99 decision | AP | status |
+|---|---|---|---|---|---|
+| **`transformer`** | 323,905 | **2.00 ms** | **1.57 ms** | 0.5103 | **production** |
+| `gru` | 232,705 | 63.22 ms | 3.12 ms | 0.5573 | disqualified |
+| `tcn` | 95,553 | 9.69 ms | 1.69 ms | — | GPU-only candidate |
+
+Budget is `(t_settle + 1) × dt` = **3.00 ms**. Deployability is a gate applied
+*before* accuracy, not a metric traded against it:
+
+```
+Deployable(m)  =  p99 forward(m) + 0.6 ms overhead  ≤  3.00 ms
+```
+
+The GRU fails it on CPU by a factor of twenty, and still fails on GPU once the
+whole decision path is counted rather than the forward pass alone. It is the
+**smaller** model and 42× slower, because it steps through all 128 window
+slots in sequence while a Transformer attends over them at once — parameter
+count is not what a real-time budget constrains.
+
+This also explains a confound the project had to unpick: a retraining run that
+omitted `--arch` silently took the config default and switched Transformer →
+GRU *while also* changing the training corpus, so an improvement that was real
+was attributed to the wrong cause. `configs/base.yaml` now declares
+`transformer`, all three tiers ship it, and a test fails if they ever diverge.
+
+[`reports/arch_control.md`](reports/arch_control.md) ·
+[`reports/arch_latency.md`](reports/arch_latency.md)
 
 **They lose.** On emitters never intercepted, across 30 seeds per tier:
 

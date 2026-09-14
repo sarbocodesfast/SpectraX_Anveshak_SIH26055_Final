@@ -79,7 +79,7 @@ AGENT_LABELS: dict[str, str] = {
     # threat-weighted interception (+195 % over the tuned sweep at 30 seeds) --
     # though see the log-rank table in the README: on hard-class emitters it is
     # the WORST policy measured, missing 126 of 146.
-    "predictor": "Occupancy predictor (learned)",
+    "predictor": "Occupancy predictor (transformer, deployable)",
     "predictor_de": "Occupancy predictor (dwell-efficient)",
     "predictor_gc": "Occupancy predictor (guaranteed coverage)",
     "whittle_predictor": "Whittle + predictor (slot-split)",

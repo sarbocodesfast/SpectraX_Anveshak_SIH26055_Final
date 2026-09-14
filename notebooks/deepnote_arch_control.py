@@ -33,7 +33,23 @@ import time
 
 T0 = time.time()
 
-ARCHS = ("transformer", "gru")
+# `gru` is gone from this list deliberately. It won the accuracy comparison by
+# ~9% AP and was disqualified by the latency gate -- 63.22 ms p99 decision on
+# CPU and 3.12 ms on GPU against a 3.00 ms budget -- so re-running it would
+# only re-measure a model that cannot ship. See reports/arch_latency.md.
+#
+# `tcn` replaces it because it is the only architecture that passes the gate
+# and has never been measured for accuracy: 95,553 parameters, under a third
+# of the transformer, at 1.69 ms p99 decision on GPU. Its dilated convolutions
+# are parallel over time, so it carries none of the GRU's sequential penalty.
+#
+# STOP RULE: this is one controlled falsification check, not the start of an
+# architecture search. TCN replaces the transformer only if it is both
+# prediction-competitive AND viable in the deployment environment. It is 9.69
+# ms on CPU, so a win here supports "TCN is a viable GPU-specific
+# alternative" and nothing broader. If it loses, the architecture question is
+# closed.
+ARCHS = ("transformer", "tcn")
 
 # ---- frozen ------------------------------------------------------------
 TIER = os.environ.get("SMARTSCAN_TIER", "medium")
@@ -50,7 +66,7 @@ WPE = 200
 SEED = 0            # same episodes for both arms
 
 REPO = "/root/ctlrepo"
-OUT = "/work/arch_control_" + TIER
+OUT = "/work/arch_control_tcn_" + TIER
 REPO_URL = "https://github.com/shirish-raj-gupta/SIH26055_Prototype"
 
 
@@ -66,7 +82,7 @@ def sh(cmd, check=True):
 
 # Only one copy at a time: Deepnote auto-runs the notebook on session
 # creation, and two instances delete each other's working directory.
-LOCK = pathlib.Path("/work/_jobs/archctl.lock")
+LOCK = pathlib.Path("/work/_jobs/archctl_tcn.lock")
 LOCK.parent.mkdir(parents=True, exist_ok=True)
 if LOCK.exists() and (time.time() - LOCK.stat().st_mtime) / 60 < 90:
     raise SystemExit(f"another instance holds {LOCK}")
@@ -129,13 +145,18 @@ for name, meta in results.items():
 (pathlib.Path(OUT) / "summary.json").write_text(json.dumps(table, indent=2))
 
 t_ap = (table.get(f"{TIER}-transformer") or {}).get("ap")
-g_ap = (table.get(f"{TIER}-gru") or {}).get("ap")
+g_ap = (table.get(f"{TIER}-tcn") or {}).get("ap")
 print("\n" + "-" * 64)
 if t_ap and g_ap:
-    print(f"ARCHITECTURE EFFECT (gru vs transformer): "
+    print(f"ARCHITECTURE EFFECT (tcn vs transformer): "
           f"{(g_ap - t_ap) / abs(t_ap) * 100:+.1f}% AP")
     print("Same episodes, same windows, same held-out split, same recipe.")
     print("Architecture is the only thing that differs.")
+    print()
+    print("STOP RULE: tcn is 9.69 ms p99 decision on CPU against a 3.00 ms")
+    print("budget, so it passes the deployability gate on GPU only. A win")
+    print("here supports 'viable GPU-specific alternative', not a general")
+    print("replacement for the production transformer.")
 else:
     print("Incomplete: at least one arm produced no model.")
 print(f"\nwrote {OUT}/summary.json")
