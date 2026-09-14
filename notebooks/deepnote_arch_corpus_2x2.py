@@ -198,9 +198,13 @@ for name, meta in results.items():
             name, "FAILED (no history)", meta["minutes"]))
         continue
     h = json.loads(hist.read_text())
-    s = h.get("student") or h.get("student_scores") or {}
+    # `scores_vs_truth` is the STUDENT -- the observation-only model that
+    # ships. `teacher_scores_vs_truth` sees privileged state and is not a
+    # candidate. Guessing "student" here returned nothing and would have
+    # printed a dash for every arm on an otherwise perfect run.
+    s = h.get("scores_vs_truth") or {}
     ap, auc = s.get("average_precision"), s.get("auc")
-    base = h.get("positive_base_rate") or h.get("base_rate")
+    base = s.get("positive_rate")
     table[name] = {"ap": ap, "auc": auc, "base": base}
     table[name].update(meta)
     print("{:34} {:>8} {:>8} {:>7} {:>6}".format(
