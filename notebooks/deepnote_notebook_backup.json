@@ -1,0 +1,42 @@
+[
+  {
+    "id": "cce8e4a5e1f24d7ead65f62d40ff1084",
+    "type": "code",
+    "content": "!pip install -q \"smartscan[ml,viz] @ git+https://github.com/shirish-raj-gupta/SIH26055_Prototype.git\" onnx onnxruntime onnxscript\n!python -c \"import torch, numpy, matplotlib; print('torch', torch.__version__, 'cuda', torch.cuda.is_available(), '| np', numpy.__version__)\"\n!nvidia-smi --query-gpu=name,memory.total --format=csv\n!free -g && nproc\n"
+  },
+  {
+    "id": "905efb32f540455786ec82d09fda0bea",
+    "type": "code",
+    "content": "!python -m smartscan.cli train --what predictor --config configs/medium.yaml \\\n    --arch transformer --episodes 300 --windows-per-episode 200\n"
+  },
+  {
+    "id": "7481f6369323485480f6450e463654aa",
+    "type": "code",
+    "content": "import json, os, subprocess, shutil, pathlib\n\nOUT = pathlib.Path(\"/work/out\"); OUT.mkdir(parents=True, exist_ok=True)\nRUNS = [\n    (\"medium\", 20260101), (\"medium\", 20260202),   # independent replicates\n    (\"easy\",   None),     (\"hard\",   None),       # other tiers\n]\nsummary = []\nfor tier, seed in RUNS:\n    cmd = [\"python\", \"-m\", \"smartscan.cli\", \"train\", \"--what\", \"predictor\",\n           \"--config\", f\"configs/{tier}.yaml\", \"--arch\", \"transformer\",\n           \"--episodes\", \"300\", \"--windows-per-episode\", \"200\"]\n    if seed:\n        cmd += [\"--set\", f\"run.seed={seed}\"]\n    print(\"\\n>>>\", \" \".join(cmd), flush=True)\n    r = subprocess.run(cmd, capture_output=True, text=True)\n    print(r.stdout[-1500:] or r.stderr[-1500:], flush=True)\n\n    h = pathlib.Path(f\"runs/checkpoints/predictor_{tier}_history.json\")\n    if h.is_file():\n        s = json.loads(h.read_text())[\"scores_vs_truth\"]\n        summary.append((tier, seed, s[\"auc\"], s[\"average_precision\"]))\n        # Tag by seed so a later run cannot overwrite an earlier result.\n        tag = f\"{tier}_{seed or 'default'}\"\n        shutil.copy(h, OUT / f\"hist_{tag}.json\")\n        pt = pathlib.Path(f\"runs/checkpoints/predictor_{tier}.pt\")\n        if pt.is_file():\n            shutil.copy(pt, OUT / f\"predictor_{tag}.pt\")\n\nfor tier in (\"medium\", \"easy\", \"hard\"):\n    subprocess.run([\"python\", \"-m\", \"smartscan.cli\", \"export-onnx\",\n                    \"--config\", f\"configs/{tier}.yaml\"], capture_output=True)\nif os.path.isdir(\"runs/onnx\"):\n    shutil.copytree(\"runs/onnx\", OUT / \"onnx\", dirs_exist_ok=True)\n\nSHIPPED = {\"medium\": 0.683, \"easy\": 0.911, \"hard\": 0.673}\nprint(f\"\\n{'tier':8s} {'seed':>10s} {'AUC':>7s} {'AP':>7s} {'vs shipped':>11s}\")\nfor tier, seed, auc, ap in summary:\n    print(f\"{tier:8s} {str(seed or '-'):>10s} {auc:7.4f} {ap:7.4f} \"\n          f\"{auc - SHIPPED[tier]:+11.3f}\")\nprint(\"\\nnoise floor sd 0.038 \u2014 a delta under +0.08 is not a result\")\nprint(\"files in /work/out:\", sorted(p.name for p in OUT.iterdir()))\n"
+  },
+  {
+    "id": "2acbdcc613dc4fd2a590c1fd601b4495",
+    "type": "code",
+    "content": "# Run-to-run spread at the SHIPPED recipe (300 episodes x 200 windows).\n# WHY: the shipped predictors use --episodes 300 --windows-per-episode 200, but\n# no spread has ever been measured AT that recipe. The only published spread\n# (sd 0.038) comes from 31x400, ~10x smaller, so it cannot judge these runs.\n#\n# Training episodes are range(run.seed+1000, run.seed+1000+episodes), so two\n# seeds are independent only if they differ by >= 300. The earlier pair\n# 20260101/20260202 differ by 101 and therefore SHARE 199 of 300 episodes --\n# they are not the independent replicates they were labelled as. The four below\n# are spaced 400 apart, and are disjoint from each other and from both earlier\n# runs.\n!pip install -q \"smartscan[ml,viz] @ git+https://github.com/shirish-raj-gupta/SIH26055_Prototype.git\" onnx onnxruntime onnxscript\n\nimport json, pathlib, subprocess, shutil, statistics\n\nOUT = pathlib.Path(\"/work/out\"); OUT.mkdir(parents=True, exist_ok=True)\nSEEDS = [20260600, 20261300, 20261700, 20262100]\nEPISODES, WPE, TIER = 300, 200, \"medium\"\n\nrows = []\nfor seed in SEEDS:\n    cmd = [\"python\", \"-m\", \"smartscan.cli\", \"train\", \"--what\", \"predictor\",\n           \"--config\", f\"configs/{TIER}.yaml\", \"--arch\", \"transformer\",\n           \"--episodes\", str(EPISODES), \"--windows-per-episode\", str(WPE),\n           \"--set\", f\"run.seed={seed}\"]\n    print(\"\\n>>>\", \" \".join(cmd), flush=True)\n    r = subprocess.run(cmd, capture_output=True, text=True)\n    print((r.stdout or r.stderr)[-1200:], flush=True)\n\n    h = pathlib.Path(f\"runs/checkpoints/predictor_{TIER}_history.json\")\n    if h.is_file():\n        d = json.loads(h.read_text()); s = d[\"scores_vs_truth\"]\n        rows.append((seed, s[\"auc\"], s[\"average_precision\"], d[\"best_val_loss\"]))\n        shutil.copy(h, OUT / f\"spread_{TIER}_{seed}.json\")\n    else:\n        print(f\"!! no history for seed {seed}\", flush=True)\n\n# Combine with the two EARLIER draws that are genuinely disjoint from these and\n# from each other. 20260202 is excluded on purpose: 66% shared with 20260101.\nPRIOR = [(20260902, 0.7634), (20260101, 0.7627)]\naucs = [a for _, a, _, _ in rows] + [a for _, a in PRIOR]\n\nprint(f\"\\n{'seed':>10s} {'AUC':>8s} {'AP':>8s} {'val_loss':>10s}\")\nfor seed, auc, ap, vl in rows:\n    print(f\"{seed:>10d} {auc:8.4f} {ap:8.4f} {vl:10.6f}\")\nfor seed, auc in PRIOR:\n    print(f\"{seed:>10d} {auc:8.4f} {'(prior)':>8s} {'-':>10s}\")\n\nif len(aucs) > 1:\n    m, sd = statistics.mean(aucs), statistics.stdev(aucs)\n    print(f\"\\nn={len(aucs)} independent draws at {EPISODES}x{WPE}\")\n    print(f\"  mean AUC {m:.4f}   sd {sd:.4f}\")\n    print(f\"  bar at this recipe: {2*sd:.4f}  (the 31x400 recipe's was 0.076)\")\n    print(f\"  incumbent 0.683 -> mean {m:.4f} = {m-0.683:+.4f}\")\n    print(f\"  VERDICT: {'clears' if (m-0.683) > 2*sd else 'DOES NOT clear'} the bar\")\nprint(\"\\nfiles:\", sorted(p.name for p in OUT.iterdir()))\n"
+  },
+  {
+    "id": "8fd817e073434eaea2988069020e9c73",
+    "type": "code",
+    "content": "!curl -sL https://raw.githubusercontent.com/shirish-raj-gupta/SIH26055_Prototype/main/notebooks/deepnote_hard_cell.py -o /tmp/c.py && python /tmp/c.py"
+  },
+  {
+    "id": "55885dd8736e4aaea0265a301fda896e",
+    "type": "code",
+    "content": "!curl -sL https://raw.githubusercontent.com/shirish-raj-gupta/SIH26055_Prototype/main/notebooks/deepnote_hard_cell.py -o /tmp/c.py && python /tmp/c.py"
+  },
+  {
+    "id": "84ee66389bb5439d910887aa7111d017",
+    "type": "code",
+    "content": "!curl -sL https://raw.githubusercontent.com/shirish-raj-gupta/SIH26055_Prototype/main/notebooks/deepnote_train_cell.py -o /tmp/c.py && SMARTSCAN_TIER=medium python /tmp/c.py"
+  },
+  {
+    "id": "f5453b1606df490b8cef15815dc0da67",
+    "type": "code",
+    "content": "!curl -sL https://raw.githubusercontent.com/shirish-raj-gupta/SIH26055_Prototype/main/notebooks/deepnote_train_cell.py -o /tmp/c.py && SMARTSCAN_TIER=easy python /tmp/c.py"
+  }
+]
