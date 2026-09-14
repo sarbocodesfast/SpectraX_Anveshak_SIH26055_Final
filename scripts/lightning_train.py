@@ -48,7 +48,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-REPO_URL = "https://github.com/shirish-raj-gupta/SIH26055_Prototype.git"
+REPO_URL = "https://github.com/shirish-raj-gupta/SpectraX_Anveshak_SIH26055_Prototype.git"
 
 #: Roughly what the dense window corpus costs, from the local measurement.
 MB_PER_EPISODE = 105

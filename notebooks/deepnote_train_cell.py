@@ -90,7 +90,7 @@ print("corpus root:", DS_ROOT, flush=True)
 # ---- code and deps ----------------------------------------------------
 if not pathlib.Path(REPO, ".git").exists():
     sh(f"rm -rf {REPO} && git clone --depth 1 "
-       f"https://github.com/shirish-raj-gupta/SIH26055_Prototype.git {REPO}", check=True)
+       f"https://github.com/shirish-raj-gupta/SpectraX_Anveshak_SIH26055_Prototype.git {REPO}", check=True)
 else:
     sh(f"cd {REPO} && git fetch -q --all && git reset -q --hard origin/main")
 sh("python -m pip install -q torch --index-url https://download.pytorch.org/whl/cu121")

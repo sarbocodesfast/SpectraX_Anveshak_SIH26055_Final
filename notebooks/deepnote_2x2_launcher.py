@@ -15,7 +15,7 @@ lives in ``notebooks/deepnote_arch_corpus_2x2.py``.
 import subprocess
 import urllib.request
 
-RAW = ("https://raw.githubusercontent.com/shirish-raj-gupta/SIH26055_Prototype/"
+RAW = ("https://raw.githubusercontent.com/shirish-raj-gupta/SpectraX_Anveshak_SIH26055_Prototype/"
        "main/notebooks/deepnote_arch_corpus_2x2.py")
 SCRIPT = "/root/arch_corpus_2x2.py"
 LOG = "/work/_jobs/arch2x2.log"

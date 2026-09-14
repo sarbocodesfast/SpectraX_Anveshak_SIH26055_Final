@@ -74,7 +74,7 @@ print("corpus root:", DS_ROOT, flush=True)
 
 # ---- 2. code and deps --------------------------------------------------
 sh(f"rm -rf {REPO} && git clone --depth 1 "
-   f"https://github.com/shirish-raj-gupta/SIH26055_Prototype.git {REPO}", check=True)
+   f"https://github.com/shirish-raj-gupta/SpectraX_Anveshak_SIH26055_Prototype.git {REPO}", check=True)
 sh("python -m pip install -q torch --index-url https://download.pytorch.org/whl/cu121")
 sh(f"cd {REPO} && python -m pip install -q -e '.[ml,viz]'", check=True)
 

@@ -59,7 +59,7 @@ DS = "/root/ctlds"                       # local disk: /work is s3fs and slow
 OUT = "/work/arch_corpus_2x2_" + TIER
 ARCHIVE = ("/work/kagglehub_cache/datasets/shirishrajgupta/"
            "ew-smart-scan-rf-environment/3.archive")
-REPO_URL = "https://github.com/shirish-raj-gupta/SIH26055_Prototype"
+REPO_URL = "https://github.com/shirish-raj-gupta/SpectraX_Anveshak_SIH26055_Prototype"
 
 
 def sh(cmd, check=True):

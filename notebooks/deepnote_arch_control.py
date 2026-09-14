@@ -67,7 +67,7 @@ SEED = 0            # same episodes for both arms
 
 REPO = "/root/ctlrepo"
 OUT = "/work/arch_control_tcn_" + TIER
-REPO_URL = "https://github.com/shirish-raj-gupta/SIH26055_Prototype"
+REPO_URL = "https://github.com/shirish-raj-gupta/SpectraX_Anveshak_SIH26055_Prototype"
 
 
 def sh(cmd, check=True):

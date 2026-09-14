@@ -70,7 +70,7 @@ def build_card() -> str:
     return f"""# EW Smart Scan — Trained Scheduler Models
 
 Companion to **ew-smart-scan-rf-environment**. Checkpoints for the learned
-schedulers in [SIH PS-26055](https://github.com/shirish-raj-gupta/SIH26055_Prototype),
+schedulers in [SIH PS-26055](https://github.com/shirish-raj-gupta/SpectraX_Anveshak_SIH26055_Prototype),
 a closed-loop Electronic Support receiver scheduler.
 
 ## Contents

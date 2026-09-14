@@ -54,7 +54,7 @@ WORKERS = 4         # Kaggle gives 4 vCPU; 8 would oversubscribe
 
 REPO = "/kaggle/working/ctlrepo"
 OUT = "/kaggle/working/arch_control_" + TIER
-REPO_URL = "https://github.com/shirish-raj-gupta/SIH26055_Prototype"
+REPO_URL = "https://github.com/shirish-raj-gupta/SpectraX_Anveshak_SIH26055_Prototype"
 
 
 def sh(cmd, check=True):
