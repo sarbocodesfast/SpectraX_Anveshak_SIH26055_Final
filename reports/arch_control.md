@@ -74,23 +74,52 @@ the second-best interception ratio and the worst hard-target record, missing
 126 of 146. A better AP is a reason to prefer an architecture, not a reason
 to expect a better scheduler.
 
-## Shipping recommendation
+## Shipping recommendation: RETRACTED — keep the transformer
 
-**Ship the GRU for MEDIUM, and make `configs/base.yaml` the authority.**
+The first version of this section recommended shipping the GRU for MEDIUM,
+conditional on measuring inference latency. That measurement has been taken
+and it **overturns the recommendation**. See
+[arch_latency.md](arch_latency.md).
 
-The evidence licenses this for MEDIUM specifically: same data, same split,
-same recipe, replicated. It also removes the standing inconsistency where the
-declared default and the shipped weights disagree.
+| device | transformer p99 | gru p99 | budget | gru share of budget |
+|---|---|---|---|---|
+| cpu | 1.381 ms | 58.475 ms | 3.00 ms | **1949%** |
+| cuda | 0.838 ms | 3.007 ms | 3.00 ms | **100%** |
 
-**Do not extend it to EASY or HARD without running the same control there.**
-Each tier is a different regime, and this project has already been caught
-generalising across tiers that differ in five ways at once.
+The GRU's forward pass **alone** exceeds the entire per-dwell budget on CPU by
+a factor of nineteen, and exactly consumes it on GPU — leaving nothing for the
+belief update and the argmax that must also happen inside the dwell. The whole
+decision already measures p99 2.031 ms with the transformer
+(`latency_budget.json`), so the overhead outside the forward pass is around
+0.6 ms; adding that to the GRU's 3.007 ms puts it over budget on GPU too.
 
-**Before shipping, measure per-dwell inference latency for both
-architectures.** If the GRU cannot meet the dwell budget on the target
-hardware, a 9% AP advantage is irrelevant and the transformer stays. That
-measurement does not exist yet and it is the one that can overturn this
-recommendation.
+The cause is structural, not a tuning problem. A GRU is recurrent and must
+step through all 128 window slots in sequence; a transformer attends over the
+window in one shot. The GRU is the **smaller** model — 232,705 parameters
+against 323,905 — and is still 42x slower per forward pass, because parameter
+count is not what a real-time budget constrains.
+
+**Ship the transformer.** A 9% average-precision advantage is worth nothing
+from a model that cannot answer within the dwell.
+
+This also resolves the config/checkpoint mismatch in the opposite direction
+from the one the architecture result suggested: `configs/base.yaml` should
+declare **`transformer`**, matching the shipped EASY and MEDIUM weights. The
+GRU default is what a retraining run silently picked up, and it was never a
+deployable choice.
+
+### The lead worth following
+
+`tcn` is the fastest architecture measured on GPU and the cheapest by far in
+parameters — 95,553, under a third of the transformer — at p99 0.849 ms
+against the transformer's 0.838 ms, and it was never entered in the accuracy
+control. If it predicts anywhere near the GRU it would dominate both: the
+dilated convolutions are parallel over time, so it has none of the GRU's
+sequential penalty. Running the same two-arm control with `tcn` against
+`transformer` is the obvious next experiment, and it is cheap.
+
+Note that `tcn` is 294% over budget on **CPU**, so this lead only matters if
+the receiver has a GPU. That is a hardware question, not a model one.
 
 See [`evidence_status.md`](evidence_status.md) for what else is proved and
 what remains quarantined, and [`checkpoints.md`](checkpoints.md) for what
