@@ -78,6 +78,8 @@ reports/*
 !reports/persistence_envchar.json
 !reports/persistence_figure.json
 !reports/persistence_figure.md
+!reports/arch_corpus_2x2.md
+!reports/arch_corpus_2x2.json
 !reports/checkpoints.md
 !reports/evidence_status.md
 !reports/coverage_gate.json
