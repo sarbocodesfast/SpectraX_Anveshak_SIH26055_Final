@@ -111,8 +111,15 @@ if not ok:
     print()
     print("Installing a torch build that supports this GPU (cu121 covers "
           "sm_50-sm_90)...", flush=True)
-    sh("python -m pip install -q torch --index-url "
-       "https://download.pytorch.org/whl/cu121 2>&1 | tail -2", check=False)
+    # --force-reinstall and a pinned version, both required. Plain
+    # `pip install torch` sees torch already present, reports "requirement
+    # already satisfied" and changes nothing -- the first attempt at this
+    # returned in six seconds, which is not long enough to download 2.5 GB,
+    # and the probe then failed identically. An install that does nothing is
+    # worse than no install: it looks like a fix in the log.
+    sh("python -m pip install --force-reinstall --no-deps "
+       "torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121 "
+       "2>&1 | tail -3", check=False)
     ok, detail = _gpu_runs_kernels()
     print(f"GPU probe after reinstall: {'OK' if ok else 'FAILED'} -- {detail}",
           flush=True)

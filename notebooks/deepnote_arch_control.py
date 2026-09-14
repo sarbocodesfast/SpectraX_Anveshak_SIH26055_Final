@@ -38,8 +38,13 @@ ARCHS = ("transformer", "gru")
 # ---- frozen ------------------------------------------------------------
 TIER = os.environ.get("SMARTSCAN_TIER", "medium")
 BATCH = 32          # pinned, NOT a ladder: batch 8 vs 64 moved AP 0.6915->0.7457
-EPOCHS = 6
-TEACHER_EPOCHS = 3
+# The transformer's best epoch was 2 of 6 and validation AP fell monotonically
+# after it (0.0693, 0.0605, 0.0592, 0.0573, 0.0572), so the later epochs bought
+# overfitting and wall time. Cutting to 3 also brings the whole control inside
+# Deepnote's detached-run limit, which killed an earlier attempt at 64.5 min
+# with DETACHED_TIMEOUT_PREEMPTIBLE. Both arms take the same budget.
+EPOCHS = 3
+TEACHER_EPOCHS = 2
 EPISODES = 200
 WPE = 200
 SEED = 0            # same episodes for both arms
