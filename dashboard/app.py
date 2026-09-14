@@ -164,7 +164,7 @@ class Track:
         return float(sum(self.rewards))
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner="Building the scenario…")
 def _episode_for(tier: str, seed: int, n_emitters: int, ibw: int, settle: int) -> tuple:
     """Build (and cache) a scenario for a given control setting.
 
@@ -835,7 +835,14 @@ def main() -> None:
 
     lead = tracks[chosen[0]]
     progress = lead.t / max(episode.n_slots, 1)
-    st.progress(min(progress, 1.0), text=f"t = {lead.t * cfg.time.dt_s:.2f} s  /  {cfg.time.episode_s:.0f} s")
+    st.progress(min(progress, 1.0),
+                text=f"t = {lead.t * cfg.time.dt_s:.2f} s  /  {cfg.time.episode_s:.0f} s")
+    # At t=0 nothing on screen says what to do next, and the panels below are
+    # empty by definition -- a viewer can reasonably think the app is broken.
+    if lead.t == 0 and not st.session_state.get("running"):
+        st.info("Press **▶ Play** in the sidebar to run the episode, or "
+                "**⏭ Step** to advance one frame. Try a **Demo preset** to "
+                "load a comparison worth watching.", icon="👈")
 
     # ---------------- panels ---------------- #
     # Computed once from the lead track: two panels drawn on different time
