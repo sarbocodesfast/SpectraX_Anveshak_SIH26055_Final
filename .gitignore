@@ -78,6 +78,8 @@ reports/*
 !reports/persistence_envchar.json
 !reports/persistence_figure.json
 !reports/persistence_figure.md
+!reports/volume_control.md
+!reports/volume_control.json
 !reports/arch_latency.md
 !reports/arch_latency.json
 !reports/arch_control.md

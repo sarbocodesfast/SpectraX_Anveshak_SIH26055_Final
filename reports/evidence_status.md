@@ -113,10 +113,33 @@ meant to measure it turned out to be the wrong experiment twice over:
   stride. Average precision on two different held-out sets is not one
   measurement.
 
-The variable that actually differed in the original claim was **volume** --
-3000 episodes against roughly 40 -- so the experiment that could rehabilitate
-it is volume x architecture on one fixed held-out set, not corpus x
-architecture.
+**Status: resolved, and the claim is not rehabilitated.** The volume x
+architecture experiment has run, with all arms scored on one held-out set
+(base rate 0.0852822 for every arm). See
+[volume_control.md](volume_control.md).
+
+Architecture and volume **interact**, strongly enough that neither has a main
+effect worth quoting:
+
+* the transformer gains **+0.0282 AP** going from 40 to 200 episodes;
+* the GRU gains **+0.4616 AP** over the same change -- 16.4x as much;
+* the ranking reverses, transformer ahead by +0.390 AP at 40 episodes and
+  behind by -0.043 AP at 200.
+
+The GRU at 40 episodes scores AP 0.1098 against a 0.0853 base rate at AUC
+0.5146: essentially non-predictive, not merely worse.
+
+That is why the original claim cannot be restated as a corpus effect. It was
+measured on a GRU -- the architecture that is extremely volume-sensitive -- so
+what it reported is an interaction observed at one corner, not an improvement
+attributable to the corpus. The correct wording remains that the earlier
+full-corpus improvement was confounded by architecture, and the confound is
+now characterised rather than merely suspected.
+
+**Inference limit.** One seed per cell, so direction and effect size only; no
+significance is claimed. The 400-episode condition is **infeasible under the
+training memory budget** (~21 GB for window building), recorded as a
+feasibility limit rather than missing data.
 
 ### 6. The retracted medium claim
 
