@@ -39,10 +39,41 @@ p99; the more accurate GRU is excluded at 60.2 ms on CPU and 3.22 ms on GPU.
 Deployability is a gate applied before accuracy, not a metric traded against
 it.
 
-What the project does **not** claim — that the Transformer is the most
-accurate architecture, that the GRU is inferior, that more data intrinsically
-helps, or that the interaction is significant — is kept in a frozen register:
-[`reports/claims.md`](reports/claims.md).
+![latency gate](reports/latency_gate.png)
+
+### The architecture decision, in one table
+
+| architecture | accuracy finding | timing | decision |
+|---|---|---|---|
+| **Transformer** | lower measured AP at 200 ep (0.5282) | CPU **and** GPU pass | **Production** |
+| GRU | highest measured AP (0.5714) | CPU **and** GPU fail | Disqualified |
+| TCN | competitive AP (0.5671) | GPU passes, CPU fails | GPU-specific alternative |
+
+**These are results under the frozen training recipe, not
+architecture-independent truths.** All arms share one learning rate and
+schedule -- which is what makes the comparison controlled -- but Transformers
+are the most schedule-sensitive of the three, and this one's *validation* AP
+is five times worse than the others' while its final score is only 9% worse.
+It may be undertrained under the shared recipe. That does not move the
+shipping decision, which the timing gate settles on its own.
+
+### What we claim, and what we do not
+
+| we claim | we do **not** claim |
+|---|---|
+| Transformer is the **deployable** predictor under the 3 ms budget | that it is the most accurate architecture |
+| GRU is excluded **by latency**, despite the highest AP | that the GRU is intrinsically inferior |
+| TCN is a **GPU-specific** alternative | that TCN is a general replacement |
+| Prediction value depends on **temporal persistence** | that the measured thresholds generalise beyond this simulator |
+| Density **amplifies** the cost of a wrong exploitation call | — |
+| Architecture and volume **interact**, in a one-seed experiment | that the interaction is statistically significant |
+| The old corpus result was **confounded** by architecture | that full-corpus training intrinsically improves prediction |
+
+Four confounds reached reported numbers in this project before being caught,
+each by an anomaly rather than by a check, and every one produced a claim that
+looked reasonable. The full register, with the evidence and qualifier behind
+each row, is [`reports/claims.md`](reports/claims.md).
+
 
 ```bash
 pip install -e ".[ml,viz,demo]"
