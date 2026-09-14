@@ -118,8 +118,9 @@ architecture experiment has run, with all arms scored on one held-out set
 (base rate 0.0852822 for every arm). See
 [volume_control.md](volume_control.md).
 
-Architecture and volume **interact**, strongly enough that neither has a main
-effect worth quoting:
+A **large architecture x volume interaction was observed** in this one-seed
+experiment — large enough that quoting either factor's effect as a single
+number would misdescribe all four cells:
 
 * the transformer gains **+0.0282 AP** going from 40 to 200 episodes;
 * the GRU gains **+0.4616 AP** over the same change -- 16.4x as much;

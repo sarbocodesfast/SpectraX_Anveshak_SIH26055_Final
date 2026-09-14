@@ -53,9 +53,13 @@ architecture that does not function at low volume and one that does.
 
 ## What this settles, and what it does not
 
-**Settled: neither factor has a main effect worth quoting on its own.** A
-statement of the form "architecture X is better" or "more data helps by Y%" is
-unsafe here, because both depend on the level of the other factor. The
+**Observed: a large architecture x training-volume interaction, in this
+one-seed experiment.** That is the whole claim, and the qualifier is part of
+it. A statement of the form "architecture X is better" or "more data helps by
+Y%" is unsafe in this setting, because in the four cells measured each
+depends on the level of the other factor — but "unsafe here" is a caution
+about quoting a single number, not a demonstration that no main effect
+exists. The
 quarantined claim — that full-corpus training improved prediction — is
 therefore *not* rehabilitated as a corpus effect. It was measured on a GRU,
 which is the architecture that happens to be extremely volume-sensitive, so
@@ -90,8 +94,8 @@ excluded regardless of where the accuracy ranking lands at any volume. See
 
 The two questions stay separate on purpose:
 
-* **What predicts best?** — architecture and volume interact; no clean ranking
-  exists.
+* **What predicts best?** — no ranking held across both volumes tested, so
+  no single answer is quotable from this experiment.
 * **What can ship?** — the transformer, decided by timing feasibility alone.
 
 `tcn` at 200 episodes (AP 0.5671) sits within 0.004 of the GRU while passing
