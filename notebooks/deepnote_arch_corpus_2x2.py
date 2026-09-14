@@ -72,6 +72,29 @@ def sh(cmd, check=True):
     return rc
 
 
+# ---- refuse to run twice at once ---------------------------------------
+# A previous attempt died on FileNotFoundError from os.getcwd(). The cause was
+# not the machine: this script had been pasted into the notebook as a block,
+# and Deepnote auto-runs the notebook when a session is created, so every
+# session spawned another instance. Each instance begins by deleting and
+# re-cloning REPO -- which is the running instance's working directory. They
+# destroyed each other.
+#
+# The lock is the fix, and it is kept even though the block has been removed,
+# because "only one copy of this is running" is a property the experiment
+# needs rather than a habit of how it happens to be launched.
+LOCK = pathlib.Path("/work/_jobs/arch2x2.lock")
+LOCK.parent.mkdir(parents=True, exist_ok=True)
+if LOCK.exists():
+    age_min = (time.time() - LOCK.stat().st_mtime) / 60
+    if age_min < 240:
+        raise SystemExit(
+            f"another instance started {age_min:.0f} min ago ({LOCK}). "
+            "Two instances delete each other's working directory. Remove the "
+            "lock only once you have confirmed nothing is running.")
+    print(f"stale lock ({age_min:.0f} min old), taking it", flush=True)
+LOCK.write_text(str(os.getpid()))
+
 # ---- environment -------------------------------------------------------
 # A stopped machine wipes /root, venv included, so never assume torch is here.
 sh(f"rm -rf {REPO} && git clone -q {REPO_URL} {REPO}")
@@ -93,6 +116,7 @@ if not pathlib.Path(ARCHIVE).exists():
         "  pip install kagglehub && python -c \"import kagglehub; "
         "kagglehub.dataset_download('shirishrajgupta/"
         "ew-smart-scan-rf-environment')\"")
+
 
 def ensure_corpus(force=False):
     """Unpack the corpus to local disk, and return its root.
@@ -209,4 +233,5 @@ print("\nIf the two corpus effects disagree in sign or size, corpus and "
       "architecture interact and neither has a single main effect to quote.")
 print("\nwrote " + OUT + "/summary.json")
 print(f"total {(time.time() - T0) / 60:.1f} min", flush=True)
+LOCK.unlink(missing_ok=True)
 print("ALLDONE_2X2")
