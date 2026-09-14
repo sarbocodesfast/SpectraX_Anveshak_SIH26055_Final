@@ -1,7 +1,13 @@
 """Architecture control on Kaggle: transformer vs GRU, everything else frozen.
 
 Paste into one Kaggle notebook cell. Requires **Internet: On** (to clone and
-pip install) and an accelerator; T4 x2 or P100 both work.
+pip install) and the accelerator set to **T4 x2**.
+
+**Not P100.** A P100 is compute capability sm_60 and Kaggle's preinstalled
+torch supports sm_70 and above, so training falls back to CPU: the
+transformer arm took 64 minutes instead of 4, and the GRU arm projected to
+16.5 h against a 12 h limit. The script now launches a CUDA kernel up front
+and refuses to start rather than discovering this an hour in.
 
 Only the architecture varies. Both arms take the same ``--episodes`` path, so
 window construction, the 80/20 split and the held-out set are identical
@@ -38,8 +44,8 @@ ARCHS = ("transformer", "gru")          # the only thing that varies
 # ---- frozen ------------------------------------------------------------
 TIER = os.environ.get("SMARTSCAN_TIER", "medium")
 BATCH = 32          # pinned, NOT a ladder: batch 8 vs 64 moved AP 0.6915->0.7457
-EPOCHS = 6
-TEACHER_EPOCHS = 3
+EPOCHS = 3          # transformer's best epoch was 2 of 6; the rest overfit
+TEACHER_EPOCHS = 2
 EPISODES = 200
 WPE = 200
 SEED = 0            # same episodes for both arms
@@ -72,6 +78,26 @@ print(f"torch {torch.__version__} cuda={torch.cuda.is_available()} "
 if torch.cuda.is_available():
     for i in range(torch.cuda.device_count()):
         print(f"  gpu{i}: {torch.cuda.get_device_name(i)}", flush=True)
+
+# Refuse to start on CPU. Kaggle handed out a Tesla P100 (sm_60) against a
+# preinstalled torch built for sm_70+, so `_pick_device` correctly fell back
+# to CPU -- and the run then took 64 minutes for an arm that needs 4, with the
+# GRU arm projected at 16.5 h against a 12 h limit. The fallback is right; the
+# silence about it is what wasted the afternoon.
+if not torch.cuda.is_available():
+    raise SystemExit("no CUDA device at all -- set the accelerator on this notebook")
+try:
+    (torch.zeros(8, 8, device="cuda") @ torch.zeros(8, 8, device="cuda")).cpu()
+except Exception as exc:
+    raise SystemExit(
+        f"the GPU cannot run kernels for this torch build: {exc}\n"
+        f"  device : {torch.cuda.get_device_name(0)}\n"
+        f"  torch  : {torch.__version__}\n"
+        "A P100 is sm_60 and the preinstalled torch supports sm_70 and above, "
+        "so training would silently fall back to CPU and take ~16x longer. "
+        "Set the accelerator to T4 x2 (sm_75) and rerun."
+    ) from exc
+print("GPU kernel launch OK", flush=True)
 
 sh(f"rm -rf {REPO} && git clone -q {REPO_URL} {REPO}")
 sh(f"git -C {REPO} log --oneline -1")
