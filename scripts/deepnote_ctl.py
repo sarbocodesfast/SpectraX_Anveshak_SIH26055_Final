@@ -229,6 +229,55 @@ def cmd_stop(_args) -> int:
     return 0
 
 
+def cmd_block(args) -> int:
+    """Add a code block to the notebook and print its id.
+
+    A new block rather than an edit to an existing one: the notebook holds
+    work that is not ours, and overwriting it to run an experiment would be a
+    destructive way to ask a question.
+    """
+    content = Path(args.file).read_text(encoding="utf-8") if args.file else args.code
+    if not content:
+        raise SystemExit("pass --code or --file")
+    st, data = call("/blocks", "POST",
+                    {"notebookId": NOTEBOOK_ID, "type": "code", "content": content})
+    print(f"block -> {st}")
+    if isinstance(data, dict):
+        bid = data.get("id") or data.get("blockId") or (data.get("block") or {}).get("id")
+        print(bid or json.dumps(data)[:400])
+        return 0 if bid else 1
+    print(str(data)[:400])
+    return 1
+
+
+def cmd_run(args) -> int:
+    """Trigger a notebook run and print the run id.
+
+    ``blockIds`` is only honoured in live mode, so passing specific blocks
+    forces ``detached=False``. A live run dies with its session, which is why
+    the cell this drives launches its real work with nohup rather than doing
+    it inline.
+    """
+    body: dict = {"notebookId": NOTEBOOK_ID}
+    if args.blocks:
+        body["blockIds"] = [b.strip() for b in args.blocks.split(",") if b.strip()]
+        body["detached"] = False
+    else:
+        body["detached"] = True
+        body["detachedRunStorageMode"] = "read_write"
+    st, data = call("/runs", "POST", body)
+    print(f"run -> {st}")
+    print(json.dumps(data, indent=1)[:500] if isinstance(data, dict) else str(data)[:500])
+    return 0 if st < 300 else 1
+
+
+def cmd_runstatus(args) -> int:
+    """Poll one run."""
+    st, data = call(f"/runs/{args.run_id}")
+    print(f"{st} {json.dumps(data)[:600] if isinstance(data, dict) else str(data)[:600]}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -251,6 +300,19 @@ def main() -> int:
     t.set_defaults(fn=cmd_tail)
     t.add_argument("--name", required=True)
     t.add_argument("--lines", type=int, default=40)
+
+    b = sub.add_parser("block")
+    b.set_defaults(fn=cmd_block)
+    b.add_argument("--code")
+    b.add_argument("--file")
+
+    r = sub.add_parser("run")
+    r.set_defaults(fn=cmd_run)
+    r.add_argument("--blocks", help="comma-separated block ids; forces live mode")
+
+    rs = sub.add_parser("runstatus")
+    rs.set_defaults(fn=cmd_runstatus)
+    rs.add_argument("--run-id", required=True)
 
     sub.add_parser("status").set_defaults(fn=cmd_status)
     sub.add_parser("stop").set_defaults(fn=cmd_stop)
