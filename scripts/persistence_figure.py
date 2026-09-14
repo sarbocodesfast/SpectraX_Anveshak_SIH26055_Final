@@ -130,82 +130,115 @@ def deltas(d: dict) -> list[dict]:
 
 
 def plot(rows: list[dict], out: Path) -> None:
-    """Two panels, one per intervention.
+    """One panel per finding, so the two cannot be read as one trend.
 
-    The persistence series and the density series are drawn as separate
-    objects on purpose. Joining them would put a line through two points that
-    differ in emitter count rather than persistence, which is exactly the
-    confound the experiment was built to break.
+    Panel A is the **sign**: persistence swept with emitter count fixed.
+    Panel B is the **magnitude**: emitter count doubled with the persistence
+    profile fixed. An earlier version drew both on one axis, which invited a
+    reader to run a line through two points that differ in emitter count
+    rather than persistence -- the exact confound the experiment exists to
+    break.
+
+    The saturated condition appears in neither trend. It is a hatched
+    placeholder labelled with its censoring, because at 25 of 30 pairs
+    censored there is no comparison to put on an axis, and the five surviving
+    pairs are the seeds where the predictor happened to get lucky.
+
+    Confidence intervals and p-values are drawn into the panels rather than
+    left to the caption, so the figure cannot be skimmed into a stronger
+    claim than the data supports.
     """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5.4))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13.5, 5.8),
+                                   gridspec_kw={"width_ratios": [1.15, 1]})
     by = {r["key"]: r for r in rows}
-    # Intervention 1: 15 emitters throughout, composition swung.
     pers = [by[k] for k in ("pairHI-B p=1.0 persist1.0", "pairMD-B p=0.5 persist.99")
             if k in by]
-    satu = [r for r in rows if r["saturated"]]
-    # Intervention 2: persistence profile identical, count doubled.
     dens = sorted((r for r in rows if abs(r["frac"] - 0.578) < 1e-6),
-                  key=lambda r: r["label"])
+                  key=lambda r: int(r["label"].split()[0]))
+    satu = next((r for r in rows if r["saturated"]), None)
 
-    ax1.axhline(0, color="0.55", lw=1, zorder=1)
-    ax1.plot([r["frac"] * 100 for r in pers], [r["d_ttfi"] for r in pers],
-             "-o", color="#1f77b4", lw=2, zorder=3,
-             label="persistence swept\n(15 emitters throughout)")
-    if len(dens) == 2:
-        ax1.plot([r["frac"] * 100 for r in dens], [r["d_ttfi"] for r in dens],
-                 "s--", color="#d62728", lw=1.5, ms=7, zorder=3,
-                 label="density swept\n(same persistence profile)")
-    for r in satu:
-        ax1.plot(r["frac"] * 100, r["d_ttfi"], "x", ms=13, mew=3,
-                 color="#7f7f7f", zorder=3,
-                 label="saturated: no significant\ncomparison possible")
-    for r in rows:
-        dx, dy = (-72, 6) if r["saturated"] else (9, -3)
-        ax1.annotate(r["label"], (r["frac"] * 100, r["d_ttfi"]),
-                     textcoords="offset points", xytext=(dx, dy), fontsize=8,
-                     color="0.3")
-    ax1.set_xlim(-8, 116)
-    ax1.set_xlabel("emitters below 0.5 individual persistence (%)")
-    ax1.set_ylabel("predictor vs whittle, time to first intercept (%)\n"
-                   "positive = predictor faster")
-    ax1.set_title("Persistence sets the sign")
-    ax1.set_yscale("symlog", linthresh=50)
-    ax1.legend(fontsize=7.5, loc="lower left")
+    # ---- A: the sign -----------------------------------------------------
+    ax1.axhline(0, color="0.3", lw=1.8, zorder=2)
+    xs = [r["frac"] * 100 for r in pers]
+    ys = [r["delta_pct"] for r in pers]
+    lo = [y - r["ci"][0] for y, r in zip(ys, pers, strict=True)]
+    hi = [r["ci"][1] - y for y, r in zip(ys, pers, strict=True)]
+    ax1.errorbar(xs, ys, yerr=[lo, hi], fmt="-o", color="#1f77b4", lw=2.4,
+                 ms=10, capsize=6, zorder=3,
+                 label="persistence swept, 15 emitters throughout")
+    for x, y, r in zip(xs, ys, pers, strict=True):
+        ax1.annotate(f"{y:+.1f}%   p = {r['p']:.3f}", (x, y),
+                     textcoords="offset points", xytext=(13, 2), fontsize=9.5,
+                     color="#1f77b4", fontweight="bold")
+        ax1.annotate(r["label"].replace("\n", ", "), (x, y),
+                     textcoords="offset points", xytext=(13, -13), fontsize=8,
+                     color="0.4")
+    # Right-anchored: the 0% point and its labels occupy the upper left.
+    ax1.annotate("predictor FASTER", (0.98, 0.96), xycoords="axes fraction",
+                 fontsize=9, color="#1a8f4a", va="top", ha="right",
+                 fontweight="bold")
+    ax1.annotate("predictor SLOWER", (0.98, 0.04), xycoords="axes fraction",
+                 fontsize=9, color="#c0392b", va="bottom", ha="right",
+                 fontweight="bold")
+    ax1.set_xlim(-12, 78)
+    ax1.set_xticks([0, 46.7])
+    ax1.set_xticklabels(["0%\nall persistent", "46.7%\nhalf persistent"])
+    ax1.set_xlabel("emitters below 0.5 individual persistence")
+    ax1.set_ylabel("intercept time vs `whittle` (%)\nbars are 95% paired bootstrap CI")
+    ax1.set_title("A - Persistence sets the SIGN\nemitter count fixed at 15",
+                  fontsize=11.5, fontweight="bold")
+    ax1.legend(fontsize=8.5, loc="lower left", framealpha=0.95)
     ax1.grid(alpha=0.25)
 
-    # Panel B ordered by persistence then emitter count, so the density pair
-    # sits adjacent and the comparison is visible without reading labels.
-    order = sorted(rows, key=lambda r: (r["frac"], int(r["label"].split()[0])))
-    xs = np.arange(len(order))
-    cols = ["#7f7f7f" if r["saturated"] else "#d62728" for r in order]
-    bars = ax2.bar(xs, [r["d_missed"] for r in order], color=cols)
-    for b, r in zip(bars, order, strict=True):
-        ax2.annotate(f"{r['d_missed']:+d}", (b.get_x() + b.get_width() / 2,
-                                             r["d_missed"]),
-                     ha="center", va="bottom", fontsize=9, color="0.25")
-    ax2.set_xticks(xs)
-    ax2.set_xticklabels([f"{r['frac'] * 100:.0f}%\n{r['label'].splitlines()[0]}"
-                         for r in order], fontsize=8)
-    ax2.set_ylabel("extra emitters never intercepted\n(predictor minus whittle)")
-    ax2.set_title("Density scales the cost")
+    # ---- B: the magnitude ------------------------------------------------
+    labels = [f"{int(r['label'].split()[0])} emitters" for r in dens]
+    vals = [abs(r["delta_pct"]) for r in dens]
+    miss = [r["d_missed"] for r in dens]
+    if satu:
+        labels.append("all scanning")
+    xpos = np.arange(len(labels))
+    bars = ax2.bar(xpos[:len(vals)], vals, color="#d62728", width=0.55)
+    for b, v, m in zip(bars, vals, miss, strict=True):
+        ax2.annotate(f"-{v:.0f}%\n{m:+d} emitters missed",
+                     (b.get_x() + b.get_width() / 2, v), ha="center",
+                     va="bottom", fontsize=9.5, color="0.25")
+    if satu:
+        # Deliberately not a value: there is no comparison to plot. The bar is
+        # a placeholder whose only job is to say why this condition is absent.
+        ax2.bar([xpos[-1]], [max(vals) * 0.08], color="none", edgecolor="0.55",
+                hatch="///", width=0.55)
+        ax2.annotate(f"WITHHELD\n{satu['n_censored']} of "
+                     f"{satu['n_censored'] + satu['n_paired']} seed pairs "
+                     f"censored\nsaturated - no comparison possible",
+                     (xpos[-1], max(vals) * 0.10), ha="center", va="bottom",
+                     fontsize=8.5, color="0.4")
+    ax2.set_xticks(xpos)
+    ax2.set_xticklabels(labels, fontsize=9.5)
+    ax2.set_ylabel("intercept-time penalty (%), magnitude")
+    ax2.set_title("B - Density scales the MAGNITUDE\n"
+                  "persistence profile fixed at 57.8%",
+                  fontsize=11.5, fontweight="bold")
+    ax2.set_ylim(0, max(vals) * 1.5)
     ax2.grid(alpha=0.25, axis="y")
-    same = [i for i, r in enumerate(order) if abs(r["frac"] - 0.578) < 1e-6]
-    if len(same) == 2:
-        lo, hi = same
-        top = max(order[lo]["d_missed"], order[hi]["d_missed"])
-        ax2.annotate("", xy=(hi, order[hi]["d_missed"] * 1.02),
-                     xytext=(lo, order[lo]["d_missed"] * 1.02),
-                     arrowprops={"arrowstyle": "->", "color": "0.35", "lw": 1.5})
-        ax2.text((lo + hi) / 2, top * 1.12, "same persistence,\n2x the emitters",
-                 ha="center", fontsize=8, color="0.25")
-    ax2.set_ylim(0, max(r["d_missed"] for r in order) * 1.32)
+    if len(vals) == 2:
+        # Routed above both bars. A diagonal drawn between their tops cuts
+        # straight through the value labels, which are the reason the panel
+        # exists at all.
+        top = max(vals) * 1.28
+        ax2.annotate("", xy=(0.92, top), xytext=(0.08, top),
+                     arrowprops={"arrowstyle": "->", "color": "0.35", "lw": 1.8})
+        ax2.text(0.5, top * 1.04, "same persistence, 2x the emitters",
+                 ha="center", fontsize=9.5, color="0.25")
 
     fig.suptitle("Prediction helps when targets persist; density decides what a "
-                 "wrong call costs  (30 paired seeds per condition)", fontsize=11)
+                 "wrong call costs\n"
+                 "30 paired seeds per condition - paired bootstrap CI - "
+                 "Wilcoxon signed-rank - one fixed checkpoint throughout",
+                 fontsize=10.5)
     fig.tight_layout()
     fig.savefig(out, dpi=150)
     print(f"wrote {out}")
