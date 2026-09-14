@@ -22,7 +22,7 @@ experimental discipline that established them:
 | **Temporal persistence selects the regime.** Holding emitter count fixed, the predictor's intercept-time advantage crosses **+18.0% → −30.2%** as half the emitters become non-persistent | 30 paired seeds/condition, bootstrap CI, Wilcoxon |
 | **Density amplifies the cost of a wrong exploitation decision**, without changing its sign — **−297.5% → −1660.2%** at an identical persistence profile | 30 paired seeds, persistence held constant |
 | **Architecture and training volume interact strongly**: the GRU gains **16.4×** what the Transformer gains from 5× more data, and the ranking reverses | **one seed per cell — descriptive, no significance claimed** |
-| **Deployment is decided by a latency gate, not by accuracy.** The Transformer ships at 2.12 ms p99; the more accurate GRU is excluded at 60.2 ms | measured on this hardware; the ratio transfers, not the absolute ms |
+| **Deployment is decided by a latency gate, not by accuracy.** The Transformer ships at 2.12 ms p99; the GRU, more accurate **at 200 episodes**, is excluded at 60.2 ms | measured on this hardware; the ratio transfers, not the absolute ms |
 
 ![architecture x volume interaction](reports/volume_interaction.png)
 
@@ -35,7 +35,8 @@ volume.
 
 **And none of that decides what ships.** The Transformer is the production
 predictor because it clears the 3 ms end-to-end decision budget at 2.12 ms
-p99; the more accurate GRU is excluded at 60.2 ms on CPU and 3.22 ms on GPU.
+p99; the GRU — more accurate **at 200 episodes**, though not at 40 — is
+excluded at 60.2 ms on CPU and 3.22 ms on GPU.
 Deployability is a gate applied before accuracy, not a metric traded against
 it.
 

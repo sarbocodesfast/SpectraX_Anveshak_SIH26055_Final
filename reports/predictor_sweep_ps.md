@@ -1,4 +1,18 @@
-# Best scheduler with the better predictor
+# Scheduler comparison at a fixed inference budget
+
+> **Superseded in one respect, and the qualifier matters.** This ran against
+> the full-corpus HARD predictor, and that checkpoint's provenance is
+> **quarantined**: the run that produced it changed architecture, batch size,
+> epochs and teacher epochs along with the corpus, so its improvement is not
+> attributable to the corpus. See
+> [`evidence_status.md`](evidence_status.md) and
+> [`claims.md`](claims.md).
+>
+> The *scheduler* comparisons below remain valid -- every arm uses the same
+> predictor and the same inference budget, so the predictor is a constant
+> rather than a variable. What is not supported is the original title's claim
+> of a "better predictor", and the production architecture is now the
+> transformer on feasibility grounds ([`arch_latency.md`](arch_latency.md)).
 
 _6 paired seeds per tier, full-corpus HARD predictor (AUC 0.7459), identical
 inference budget (`predict_every=16`) for every predictor-based arm._

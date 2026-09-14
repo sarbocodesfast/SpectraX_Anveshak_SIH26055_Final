@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 """Why the more accurate predictor does not ship.
 
-The GRU has the highest average precision of any architecture measured. It is
+The GRU has the highest average precision of any architecture measured **at
+200 training episodes** -- at 40 it is barely above the base rate, which is
+the interaction reported in volume_control.md. It is
 not the production model. A table states that; a figure should make it
 obvious without being read closely.
 
@@ -131,8 +133,12 @@ def plot(rep: dict, overhead: float, out: Path) -> None:
     ax2.set_title("Accuracy does not decide", fontsize=12, fontweight="bold")
     ax2.grid(alpha=0.25, axis="y")
 
-    fig.suptitle("The most accurate predictor is not the one that ships — "
-                 "the GRU leads on AP and misses the dwell budget on both devices\n"
+    # "leads on AP" carries its volume, because at 40 episodes it does not:
+    # the ranking reverses, and an unqualified claim here would contradict
+    # volume_control.md.
+    fig.suptitle("The most accurate predictor is not the one that ships — the GRU "
+                 "leads on AP at 200 episodes and misses the dwell budget on both "
+                 "devices\n"
                  "TCN passes on GPU only; latency measured on this hardware, so the "
                  "ratio between architectures transfers, not the absolute ms",
                  fontsize=10.5)
