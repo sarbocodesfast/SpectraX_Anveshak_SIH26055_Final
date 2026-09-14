@@ -19,6 +19,8 @@ The GRU's p99 forward pass is **39.1x** the transformer's, on 72% of the paramet
 
 **This is a deployment constraint, not a detail.** The shipped predictor already sits at 1.5x headroom on MEDIUM (p99 2.031 ms against 3.0 ms) *with the transformer*. Multiplying the forward pass by this factor does not fit, so the ~9% average-precision advantage cannot be taken without either a faster inference path or a larger budget.
 
+![latency gate](latency_gate.png)
+
 ## Latency is a gate, not a metric
 
 Accuracy and latency are not two numbers to trade against each other here. The receiver must answer within the dwell or it has not answered at all, so deployability is a predicate applied *first*:
