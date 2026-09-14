@@ -547,6 +547,7 @@ def checkpoint_provenance(arch: str, config: Config | None = None,
         "architecture": arch,
         "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "code_commit": commit,
+        "torch_version": _torch_version(),
     })
     if config is not None:
         pc = config.predictor
@@ -579,11 +580,28 @@ MANIFEST_FIELDS: tuple[str, ...] = (
     "architecture", "training_corpus", "dataset_hash", "batch_size", "lr",
     "epochs", "patience", "loss", "hidden_dim", "n_layers", "dropout",
     "feature_schema", "seed", "difficulty", "code_commit", "saved_at",
+    "torch_version",
 )
 
 #: Fields that legitimately differ between two runs of the same experiment and
 #: therefore never block a comparison on their own.
 _INCIDENTAL: frozenset[str] = frozenset({"saved_at", "code_commit"})
+
+
+def _torch_version() -> str:
+    """The torch build that produced these weights, or ``unknown``.
+
+    Recorded because it is a factor and factors get recorded. A rerun of this
+    project's own control came back on torch 2.14.0+cu130 where the previous
+    attempt had used 2.5.1+cu121 -- the pip index had simply resolved
+    differently -- which is precisely the kind of silent change that made the
+    earlier corpus comparisons unusable.
+    """
+    try:
+        import torch
+        return str(torch.__version__)
+    except Exception:
+        return "unknown"
 
 
 class IncomparableCheckpointsError(AssertionError):
