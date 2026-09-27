@@ -217,4 +217,5 @@ def train_hybrid(
         print(f"[hybrid] frozen predictor from {path}", flush=True)
     # The hybrid's extra plane is supplied by the environment wrapper; the RL
     # trainer is unchanged, which is what keeps the comparison clean.
-    return train_ppo(config, seeds, total_steps=total_steps, verbose=verbose)
+    
+    return train_ppo(config, seeds, total_steps=total_steps, verbose=verbose, hybrid=True)
